@@ -462,7 +462,11 @@ module hadapt_extrude
         delta_h = get_delta_h( xyz, is_constant, constant_value, py_func)
       end if
       z=z - delta_h
-      if (z<-depth+min_bottom_layer_frac*delta_h) exit
+      if (depth > 0.0) then
+        if (z<-depth+min_bottom_layer_frac*delta_h) exit
+      else
+        if (z>-depth+min_bottom_layer_frac*delta_h) exit
+      end if
       call insert(depths, z)
       if (depths%length>MAX_VERTICAL_NODES) then
         ewrite(-1,*) "Check your extrude/sizing_function"

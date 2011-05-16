@@ -316,7 +316,7 @@ contains
         call compressible_eos_stiffened_gas(state, eos_path, drhodp_local, &
             density=density, pressure=pressure)
       
-      else if(have_option(trim(eos_path)//'/compressible/giraldo')) then
+      else if(have_option(trim(eos_path)//'/compressible/giraldo2')) then
         
         ! Eq. of state commonly used in atmospheric applications. See
         ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
@@ -485,104 +485,151 @@ contains
       
     ! locals
     integer :: stat, gstat, cstat, pstat, tstat
-    type(scalar_field), pointer :: pressure_local, density_local, temperature_local
+    type(scalar_field), pointer :: pressure_local, energy_local, density_local, &
+                                   & temperature_local
+    type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
+                          & temperature_remap
     real :: reference_density, p_0, c_p, c_v
     real :: drhodp_node, power
     real :: R
-    type(scalar_field) :: pressure_remap, density_remap, temperature_remap
+!     type(scalar_field) :: pressure_remap, density_remap, temperature_remap
     logical :: incompressible
     integer :: node
     
-    call get_option(trim(eos_path)//'/compressible/giraldo/reference_pressure', &
+    call get_option(trim(eos_path)//'/compressible/giraldo2/reference_pressure', &
                     p_0, default=1.0e5)
-    
-    call get_option(trim(eos_path)//'/compressible/giraldo/C_P', &
+        
+    call get_option(trim(eos_path)//'/compressible/giraldo2/C_P', &
                     c_p, stat=gstat)
     if(gstat/=0) then
-      c_p=1.0
+       c_p=1000.0
     end if
-    
-    call get_option(trim(eos_path)//'/compressible/giraldo/C_V', &
+        
+    call get_option(trim(eos_path)//'/compressible/giraldo2/C_V', &
                     c_v, stat=cstat)
     if(cstat/=0) then
-      c_v=1.0
+       c_v=714.285714
     end if
+
+!     call get_option(trim(eos_path)//'/compressible/giraldo2/reference_height', &
+!                     ref_h, stat=hstat)
+!     if(hstat/=0) then
+!        ref_h=0.0
+!     end if
 
     R=c_p-c_v
-    
+        
     incompressible = ((gstat/=0).or.(cstat/=0))
     if(incompressible) then
-      ewrite(0,*) "Selected compressible eos but not specified either C_P or C_V."
+       ewrite(0,*) "Selected compressible eos but not specified either C_P or C_V."
     end if
-    
-    call zero(drhodp)
-    
-    if(.not.incompressible) then
-      pressure_local=>extract_scalar_field(state,'Pressure',stat=pstat)
-      temperature_local=>extract_scalar_field(state,'Temperature',stat=tstat)
-      if ((pstat==0).and.(tstat==0)) then
-        ! drhodp = ((R+c_v)/c_p)*1.0/( R*T) * (P/P_0)^((R+c_v-c_p)/c_p)
-        call allocate(pressure_remap, drhodp%mesh, 'RemappedPressure')
-        call remap_field(pressure_local, pressure_remap)
-        call allocate(temperature_remap, drhodp%mesh, 'RemappedTemperature')
-        call remap_field(temperature_local, temperature_remap)
 
-        power=(R+c_v-c_p)/c_p
-        do node=1,node_count(drhodp)
-          drhodp_node=((c_v+R)/c_p)*1.0/(R*node_val(temperature_remap,node))*(node_val(pressure_remap,node)/p_0)**(power)
-          call set(drhodp, node, drhodp_node)
-        end do
+!     if (hstat/=0) then
+!         ewrite(0,*) "Warning: No reference height set for the equation of state. Defaulting to 0."
+!     end if
+
+        ! Were going to need the position and velocity fields for various calculations.
+        ! Currently some dirty, dirty remaps will be going on, but as this is only being
+        ! tested with linear shape functions for all spaces it's ok for now.
+
+!     x_local => extract_vector_field(state, "Coordinate")
+!         u_local => extract_vector_field(state, "NonlinearVelocity")
+!         u_local => extract_vector_field(state, "Velocity")
+
+!         call get_option("/physical_parameters/gravity/magnitude", gravity_magnitude, stat)
+
+!         dim=x_local%dim
+!         assert(x_local%dim==u_local%dim)
+! 
+!         allocate(x(dim), u(dim))
         
-        call deallocate(temperature_remap)
-      else
-        FLExit('No Pressure or temperature in material_phase::'//trim(state%name))
-      endif
-    end if
+        call zero(drhodp)
+        
+        if(.not.incompressible) then
+          energy_local=>extract_scalar_field(state,'InternalEnergy',stat=stat)
 
-    if(present(density)) then
-      ! calculate the density
-      ! density may equal density in state depending on how this
-      ! subroutine is called
-      if(incompressible) then
-        ! density = reference_density
-        call set(density, reference_density)
-      else
-        assert(density%mesh==drhodp%mesh)
-        call set(density, pressure_remap)
-        call scale(density, drhodp)
-        call scale(density, 1.0/(1.0+power))
-          
-        call deallocate(pressure_remap)
-      end if
-    end if
+          if((gstat==0).and.(cstat==0)) then
+            
+            call allocate(energy_remap, drhodp%mesh, 'RemappedInternalEnergy')
+!             call allocate(x_remap, x_local%dim, drhodp_local%mesh, name="RemappedCoordinate")
+!             call allocate(u_remap, u_local%dim, drhodp_local%mesh, name="RemappedVelocity")
 
-    if(present(pressure)) then
-      if(incompressible) then
-        ! pressure is unrelated to density in this case
-        call zero(pressure)
-      else
-        ! calculate the pressure using the eos and the calculated (probably prognostic)
-        ! density
-        density_local=>extract_scalar_field(state,'Density',stat=stat)
-        if (stat==0) then
-          assert(pressure%mesh==drhodp%mesh)
-          
-          ! pressure = density_local/drhodp
-          
-          call allocate(density_remap, drhodp%mesh, "RemappedDensity")
-          call remap_field(density_local, density_remap)
-          
-          call set(pressure, drhodp)
-          call invert(pressure)
-          call scale(pressure, density_remap)
-          call scale(pressure, (1.0+power))
-          
-          call deallocate(density_remap)
-        else
-          FLExit('No Density in material_phase::'//trim(state%name))
+            call remap_field(energy_local, energy_remap)
+!             x_remap = get_nodal_coordinate_field( state, drhodp_local%mesh )
+!             call remap_field(u_local, u_remap, stat=stat)
+            
+            do node=1,node_count(drhodp)
+!               x=node_val(x_remap,node)
+!               u=node_val(u_remap,node)
+!               drhodp_node=(R/c_v)*(node_val(energy_remap,node)-0.5*dot_product(u,u)-gravity_magnitude*(x(dim)-ref_h))
+              drhodp_node=(R/c_v)*node_val(energy_remap,node)
+              call set(drhodp, node, drhodp_node)
+            end do
+            
+            call deallocate(energy_remap)
+!             call deallocate(x_remap)
+!             call deallocate(u_remap)
+          end if
+          call invert(drhodp)
+
         end if
-      end if
-    end if
+
+        if(present(density)) then
+          ! calculate the density
+          ! density may equal density in state depending on how this
+          ! subroutine is called
+          if(incompressible) then
+            ! density = reference_density
+            call set(density, reference_density)
+          else
+            pressure_local=>extract_scalar_field(state,'Pressure',stat=stat)
+            if (stat==0) then
+              assert(density%mesh==drhodp%mesh)
+              
+              call allocate(pressure_remap, drhodp%mesh, "RemappedPressure")
+              call remap_field(pressure_local, pressure_remap)
+
+!               call get_option(trim(pressure_local%option_path)//'/prognostic/atmospheric_pressure', &
+!                               atmospheric_pressure, default=0.0)
+              
+!               call set(density, atmospheric_pressure)
+!               call addto(density, pressure_remap)
+              call set(density, pressure_remap)
+              call scale(density, drhodp)
+              
+              call deallocate(pressure_remap)
+            else
+              FLExit('No Pressure in material_phase::'//trim(state%name))
+            end if
+          end if
+        end if
+
+        if(present(pressure)) then
+          if(incompressible) then
+            ! pressure is unrelated to density in this case
+            call zero(pressure)
+          else
+            ! calculate the pressure using the eos and the calculated (probably prognostic)
+            ! density
+            density_local=>extract_scalar_field(state,'Density',stat=stat)
+            if (stat==0) then
+              assert(pressure%mesh==drhodp%mesh)
+              
+              call allocate(density_remap, drhodp%mesh, "RemappedDensity")
+              call remap_field(density_local, density_remap)
+              
+              call set(pressure, drhodp)
+              call invert(pressure)
+              call scale(pressure, density_remap)
+              
+              call deallocate(density_remap)
+            else
+              FLExit('No Density in material_phase::'//trim(state%name))
+            end if
+          end if
+        end if
+
+!         deallocate(x, u)
 
   end subroutine compressible_eos_giraldo
 
