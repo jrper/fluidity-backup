@@ -675,6 +675,31 @@ start =
                               real
                            }
                         }|
+                        ## Giraldo et. al. 2008, J. Comp. Phys.
+                        ##
+                        ## Used with compressible simulations
+                        element giraldo2 {
+                           ## reference pressure
+                           ##
+                           ## The pressure at which potential temperature
+                           ## equals actual temperature. Normally taken to
+                           ## be the surface pressure, 1.0e05.
+                           element reference_pressure {
+                              real
+                           },
+                           ## Heat capacity at constant pressure
+                           element C_P {
+                              real
+                           },
+                           ## Heat capacity at constant volume
+                           element C_V {
+                              real
+                           },
+                           ## Heat capacity at constant volume
+                           element reference_height {
+                              real
+                           }
+                        }|  
                         ## Foam EoS
                         ## Used with compressible simulations of liquid drainage in foams.
                         ## It describes the liquid content in the foam as the product of the 

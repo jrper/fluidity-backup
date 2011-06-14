@@ -87,7 +87,7 @@ contains
     
     ! TODO: Sort old_positions into descending coordinate order here
     
-    assert(descending_coordinate_ordered(old_positions))
+!     assert(descending_coordinate_ordered(old_positions))
     
     call tic(TICTOC_ID_SERIAL_ADAPT)
     call adapt_1d(old_positions, sizing, shape, new_positions, preserve_regions=preserve_regions)
@@ -95,7 +95,7 @@ contains
 
     call deallocate(sizing)
     
-    assert(descending_coordinate_ordered(new_positions))
+!     assert(descending_coordinate_ordered(new_positions))
     
     ! adapt_1d doesn't build a complete mesh. Build the rest of the mesh.
     assert(ele_count(new_positions) == node_count(new_positions) - 1)

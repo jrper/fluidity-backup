@@ -511,6 +511,11 @@ contains
        c_v=714.285714
     end if
 
+!     print *, 'In giraldo2'
+!     p_0=1.0e5
+!     c_p=1000.0
+!     c_v=714.285714
+
 !     call get_option(trim(eos_path)//'/compressible/giraldo2/reference_height', &
 !                     ref_h, stat=hstat)
 !     if(hstat/=0) then

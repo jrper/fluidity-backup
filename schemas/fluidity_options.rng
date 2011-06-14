@@ -808,6 +808,31 @@ be the surface pressure, 1.0e05.</a:documentation>
                         <ref name="real"/>
                       </element>
                     </element>
+                    <element name="giraldo2">
+                      <a:documentation>Giraldo et. al. 2008, J. Comp. Phys.
+
+Used with compressible simulations</a:documentation>
+                      <element name="reference_pressure">
+                        <a:documentation>reference pressure
+
+The pressure at which potential temperature
+equals actual temperature. Normally taken to
+be the surface pressure, 1.0e05.</a:documentation>
+                        <ref name="real"/>
+                      </element>
+                      <element name="C_P">
+                        <a:documentation>Heat capacity at constant pressure</a:documentation>
+                        <ref name="real"/>
+                      </element>
+                      <element name="C_V">
+                        <a:documentation>Heat capacity at constant volume</a:documentation>
+                        <ref name="real"/>
+                      </element>
+                      <element name="reference_height">
+                        <a:documentation>Heat capacity at constant volume</a:documentation>
+                        <ref name="real"/>
+                      </element>
+                    </element>
                     <element name="foam">
                       <a:documentation>Foam EoS
 Used with compressible simulations of liquid drainage in foams.

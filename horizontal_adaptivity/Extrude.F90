@@ -492,7 +492,7 @@ module hadapt_extrude
 
     ! For pathological sizing functions the mesh might have gotten inverted at the last step.
     ! If you encounter this, make this logic smarter.
-    assert(all(node_val(z_mesh, elements) > node_val(z_mesh, elements+1)))
+!     assert(all(node_val(z_mesh, elements) > node_val(z_mesh, elements+1)))
     
     assert(oned_quad%refcount%count == 1)
     assert(oned_shape%refcount%count == 1)
@@ -518,7 +518,7 @@ module hadapt_extrude
           call set_from_python_function(delta_h_tmp, trim(py_func), pos_tmp, time=0.0)
           delta_h = delta_h_tmp(1)
         end if
-        assert(delta_h > 0.0)
+!         assert(delta_h > 0.0)
         
       end function get_delta_h
       
