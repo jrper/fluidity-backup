@@ -55,6 +55,7 @@ module field_equations_cv
   use halos
   use field_options
   use state_fields_module
+  use hydrostatic_pressure
 
   implicit none
 
@@ -792,7 +793,7 @@ contains
       ! divergence matrix for energy equation
       type(block_csr_matrix) :: CT_m
       ! pressure
-      type(scalar_field), pointer :: p
+      type(scalar_field), pointer :: p, hp, complete_p
       ! the assembled pressure term
       type(scalar_field) :: pterm
       ! atmospheric pressure for the energy equation
@@ -807,6 +808,9 @@ contains
 
       ! self explanatory strings
       integer :: equation_type
+
+      ! counter
+      integer :: i
 
       ewrite(1, *) "In assemble_field_eqn_cv"
 
@@ -1071,8 +1075,21 @@ contains
 
         ! construct rhs
         p=>extract_scalar_field(state(1), "Pressure")
-        ewrite_minmax(p%val)
-        assert(p%mesh==tfield%mesh)
+
+        allocate(complete_p)
+        call allocate(complete_p, p%mesh, "Full Pressure", field_type=FIELD_TYPE_CONSTANT)
+        call zero(complete_p)
+        ! Set up for possible hydrostatic contribution
+        do i = 1, size(state)
+           if (has_scalar_field(state(i), hp_name)) then
+              ewrite(1,*), "Making full pressure" 
+              hp => extract_scalar_field(state(i), hp_name)
+              call remap_field(hp,complete_p)
+           end if
+        end do
+        call addto(complete_p,p)
+        ewrite_minmax(complete_p%val)
+        assert(complete_p%mesh==tfield%mesh)
         ! halo exchange not necessary as it is done straight after solve
         call get_option(trim(p%option_path)//'/prognostic/atmospheric_pressure', &
                               atmospheric_pressure, default=0.0)
@@ -1087,12 +1104,14 @@ contains
         ! construct the pressure term
         call mult(pterm, CT_m, advu) 
                                 ! should this really be the advection velocity or just the relative or the nonlinear?
-        pterm%val = pterm%val*(p%val+atmospheric_pressure)
+        pterm%val = pterm%val*(complete_p%val+atmospheric_pressure)
 
         call addto(rhs, pterm, -1.0)
 
         call deallocate(CT_m)
         call deallocate(pterm)
+        call deallocate(complete_p)
+        deallocate(complete_p)
 
         ! construct M
         if(explicit) then

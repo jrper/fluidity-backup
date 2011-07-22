@@ -113,6 +113,7 @@
     logical :: have_surface_fs_stabilisation
     logical :: les_second_order, les_fourth_order, wale, dynamic_les
     logical :: on_sphere
+    logical :: remove_hydrostatic_balance_pressure=.true.
     
     logical :: move_mesh
     
@@ -249,6 +250,8 @@
       type(scalar_field) :: alpha_u_field
       real, dimension(u%dim) :: abs_wd_const
 
+      type(scalar_field), pointer :: hb_buoyancy
+
       ! Volume fraction fields for multi-phase flow simulation
       type(scalar_field), pointer :: vfrac
       type(scalar_field) :: nvfrac ! Non-linear version
@@ -334,6 +337,12 @@
         gravity_magnitude = 0.0
       end if
       ewrite_minmax(buoyancy%val)
+
+      if (has_scalar_field(state,"HydroStaticBalanceDensity")) then
+        hb_buoyancy=>extract_scalar_field(state, "HydroStaticBalanceDensity")
+      else
+        hb_buoyancy=>dummyscalar
+      end if
 
       viscosity=>extract_tensor_field(state, "Viscosity", stat)
       have_viscosity = stat == 0
@@ -680,7 +689,7 @@
          call construct_momentum_element_cg(state, ele, big_m, rhs, ct_m, mass, inverse_masslump, visc_inverse_masslump, &
               x, x_old, x_new, u, oldu, nu, ug, &
               density, p, &
-              source, absorption, buoyancy, gravity, &
+              source, absorption, buoyancy, hb_buoyancy, gravity, &
               viscosity, grad_u, &
               mnu, tnu, leonard, alpha, &
               gp, surfacetension, &
@@ -782,11 +791,7 @@
           ! we still have to make the lumped mass if this is true
           masslump_component=extract_scalar_field(inverse_masslump, 1)
 
-          if(multiphase) then
-            call compute_lumped_mass_on_submesh(state, masslump_component, density=density, vfrac=nvfrac)
-          else
-            call compute_lumped_mass_on_submesh(state, masslump_component, density=density)
-          end if
+          call compute_lumped_mass_on_submesh(state, masslump_component, density=density)
 
           ! copy over to other components
           do dim = 2, inverse_masslump%dim
@@ -1130,7 +1135,7 @@
                                             mass, masslump, visc_masslump, &
                                             x, x_old, x_new, u, oldu, nu, ug, &
                                             density, p, &
-                                            source, absorption, buoyancy, gravity, &
+                                            source, absorption, buoyancy, hb_buoyancy, gravity, &
                                             viscosity, grad_u, &
                                             mnu, tnu, leonard, alpha, &
                                             gp, surfacetension, &
@@ -1157,7 +1162,7 @@
 
       type(vector_field), intent(in) :: x, u, oldu, nu 
       type(vector_field), pointer :: x_old, x_new, ug
-      type(scalar_field), intent(in) :: density, p, buoyancy
+      type(scalar_field), intent(in) :: density, p, buoyancy, hb_buoyancy
       type(vector_field), intent(in) :: source, absorption, gravity
       type(tensor_field), intent(in) :: viscosity, grad_u
 
@@ -1325,7 +1330,7 @@
       
       ! Buoyancy terms
       if(have_gravity) then
-        call add_buoyancy_element_cg(x, ele, test_function, u, buoyancy, gravity, nvfrac, on_sphere, detwei, rhs_addto)
+        call add_buoyancy_element_cg(x, ele, test_function, u, buoyancy, hb_buoyancy, gravity, nvfrac, on_sphere, detwei, rhs_addto)
       end if
       
       ! Surface tension
@@ -1626,7 +1631,7 @@
       
     end subroutine add_sources_element_cg
     
-    subroutine add_buoyancy_element_cg(positions, ele, test_function, u, buoyancy, gravity, nvfrac, on_sphere, detwei, rhs_addto)
+    subroutine add_buoyancy_element_cg(positions, ele, test_function, u, buoyancy, hb_buoyancy, gravity, nvfrac, on_sphere, detwei, rhs_addto)
       type(vector_field), intent(in) :: positions
       integer, intent(in) :: ele
       type(element_type), intent(in) :: test_function
@@ -1637,6 +1642,11 @@
       real, dimension(ele_ngi(u, ele)), intent(in) :: detwei
       real, dimension(u%dim, ele_loc(u, ele)), intent(inout) :: rhs_addto
       logical, intent(in) :: on_sphere
+
+      type(scalar_field), intent(in) :: hb_buoyancy
+
+!       print *, 'Buoyancy'
+!       print *, ele_val_at_quad(buoyancy, ele), ele_val_at_quad(hb_buoyancy, ele)
       
       real, dimension(ele_ngi(u, ele)) :: nvfrac_gi
       real, dimension(ele_ngi(u, ele)) :: coefficient_detwei
@@ -1645,7 +1655,11 @@
          nvfrac_gi = ele_val_at_quad(nvfrac, ele)
       end if
 
-      coefficient_detwei = gravity_magnitude*ele_val_at_quad(buoyancy, ele)*detwei
+      if (remove_hydrostatic_balance_pressure) then
+        coefficient_detwei = gravity_magnitude*(ele_val_at_quad(buoyancy, ele)-ele_val_at_quad(hb_buoyancy, ele))*detwei
+      else
+        coefficient_detwei = gravity_magnitude*ele_val_at_quad(buoyancy, ele)*detwei
+      end if
       if(multiphase) then
          coefficient_detwei = coefficient_detwei*nvfrac_gi
       end if
@@ -1800,7 +1814,7 @@
           end if
 
           do i=1,ele_ngi(U,ele)
-            drho_dz(i)=dot_product(grad_rho(:,i),grav_at_quads(:,i)) ! Divide this by rho_0 for non-Boussinesq?
+            drho_dz(i)=dot_product(grad_rho(i,:),grav_at_quads(:,i)) ! Divide this by rho_0 for non-Boussinesq?
             if (drho_dz(i) < ib_min_grad) drho_dz(i)=ib_min_grad ! Default ib_min_grad=0.0
           end do
 

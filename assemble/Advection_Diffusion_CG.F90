@@ -46,6 +46,7 @@ module advection_diffusion_cg
   use state_module
   use upwind_stabilisation
   use sparsity_patterns_meshes
+  use hydrostatic_pressure, only: hp_name
   
   implicit none
   
@@ -228,7 +229,7 @@ contains
     type(scalar_field), target :: dummydensity
     type(scalar_field), pointer :: density, olddensity
     character(len = FIELD_NAME_LEN) :: density_name
-    type(scalar_field), pointer :: pressure
+    type(scalar_field), pointer :: pressure, complete_pressure, hp
         
     ewrite(1, *) "In assemble_advection_diffusion_cg"
     
@@ -456,6 +457,21 @@ contains
                       density_theta)
                       
       pressure=>extract_scalar_field(state, "Pressure")
+
+      allocate(complete_pressure)
+      call allocate(complete_pressure,pressure%mesh,"CompletePressure")
+
+      if (has_scalar_field(state,hp_name)) then
+         hp => extract_scalar_field(state,hp_name)
+         call remap_field(hp,complete_pressure)
+      else
+         call zero(complete_pressure)
+      end if
+
+      call set(complete_pressure,pressure)
+
+
+
       ewrite_minmax(pressure%val)
     case default
       FLExit("Unknown field equation type for cg advection diffusion.")
@@ -471,7 +487,7 @@ contains
                                         positions, old_positions, new_positions, &
                                         velocity, grid_velocity, &
                                         source, absorption, diffusivity, &
-                                        density, olddensity, pressure)
+                                        density, olddensity, complete_pressure)
     end do
 
     ! as part of assembly include the already discretised optional source
@@ -520,6 +536,8 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
+    call deallocate(complete_pressure)
+    deallocate(complete_pressure)
     
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"
     

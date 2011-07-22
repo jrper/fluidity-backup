@@ -39,6 +39,7 @@ module compressible_projection
   use fefields, only: compute_lumped_mass
   use state_fields_module
   use upwind_stabilisation
+  use hydrostatic_pressure, only: hp_name
   implicit none 
 
   ! Buffer for output messages.
@@ -105,7 +106,7 @@ contains
     type(scalar_field) :: eospressure, drhodp
     type(scalar_field), pointer :: normalisation, &
                                    density, olddensity
-    type(scalar_field), pointer :: pressure
+    type(scalar_field), pointer :: pressure, hydrostatic_pressure
     type(scalar_field), pointer :: p_lumpedmass
     type(scalar_field) :: lhsfield, invnorm, absrhs
     
@@ -122,6 +123,15 @@ contains
     if(cmcget) then
 
       pressure=>extract_scalar_field(state, "Pressure")
+
+      if (has_scalar_field(state,hp_name)) then
+         hydrostatic_pressure=>extract_scalar_field(state,hp_name)
+      else
+         allocate(hydrostatic_pressure)
+         call allocate(hydrostatic_pressure,pressure%mesh,"HydrostaticPressure")
+         call zero(hydrostatic_pressure)
+      end if
+
       call get_option(trim(pressure%option_path)//'/prognostic/atmospheric_pressure', &
                       atmospheric_pressure, default=0.0)
       
@@ -178,7 +188,8 @@ contains
 !      ( (1./dt)*(olddensity - density + drhodp*(eospressure - (pressure + atmospheric_pressure)))
 !       +(absorption)*(drhodp*theta_pg*(eospressure - (pressure + atmospheric_pressure)) - theta_pg*density - (1-theta_pg)*olddensity)
 !       +source)
-      call set(rhs, pressure)
+      call remap_field(hydrostatic_pressure,rhs)
+      call addto(rhs, pressure)
       call addto(rhs, atmospheric_pressure)
       call scale(rhs, -1.0)
       call addto(rhs, eospressure)
@@ -196,7 +207,8 @@ contains
       if(stat==0) then
         call allocate(absrhs, absorption%mesh, "AbsorptionRHS")
         
-        call set(absrhs, pressure)
+        call remap_field(hydrostatic_pressure,absrhs)
+        call addto(absrhs, pressure)
         call addto(absrhs, atmospheric_pressure)
         call scale(absrhs, -1.0)
         call addto(absrhs, eospressure)
@@ -219,6 +231,11 @@ contains
       
       call deallocate(eospressure)
       call deallocate(drhodp)
+
+      if (.not. has_scalar_field(state,"HydrostaticPressure")) then
+         call deallocate(hydrostatic_pressure)
+         deallocate(hydrostatic_pressure)
+      end if
 
       call deallocate(lhsfield)
       call deallocate(invnorm)
@@ -250,7 +267,7 @@ contains
                                    volumefraction, oldvolumefraction, materialdensity, oldmaterialdensity
     type(scalar_field), pointer :: dummy_ones
 
-    type(scalar_field), pointer :: pressure
+    type(scalar_field), pointer :: pressure, hydrostatic_pressure, complete_pressure
     type(vector_field), pointer :: positions
     type(scalar_field) :: lumped_mass, tempfield
 
@@ -275,7 +292,20 @@ contains
        ewrite(0,*) "Not sure if new options are compatible with this yet."
        pressure_warned=.true.
     end if
+
+    allocate(complete_pressure)
+    call allocate(complete_pressure,pressure%mesh,"CompletePressure")
+
+
+    if (has_scalar_field(state(1),hp_name)) then
+       hydrostatic_pressure=>extract_scalar_field(state(1),hp_name)
+       call remap_field(hydrostatic_pressure,complete_pressure)
+    else
+       call zero(complete_pressure)
+    end if
     
+
+    call addto(complete_pressure,pressure)
     call zero(rhs)
    
     if(have_option(trim(pressure_option_path)//"/prognostic/scheme/use_compressible_projection_method")) THEN
@@ -359,7 +389,7 @@ contains
                +(1./dt)*lumped_mass%val* &
                           ( &
                             normmatdrhodpp%val &
-                          - normdrhodp%val*(pressure%val+atmospheric_pressure) &
+                          - normdrhodp%val*(complete_pressure%val+atmospheric_pressure) &
                           )
 
         call deallocate(normdensity)
@@ -374,6 +404,8 @@ contains
         call deallocate(tempfield)
         call deallocate(dummy_ones)
         deallocate(dummy_ones)
+        call deallocate(complete_pressure)
+        deallocate(complete_pressure)
 
       end if
 

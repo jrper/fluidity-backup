@@ -1374,6 +1374,11 @@
          type(vector_field) :: delta_u
          integer :: i
 
+         logical :: remove_hydrostatic_balance_pressure=.true.
+         type(scalar_field), pointer :: hb_pressure
+         type(scalar_field) :: combined_p
+         integer :: node
+
          ewrite(1,*) 'Entering advance_velocity'
 
 
@@ -1395,11 +1400,19 @@
             ! a halo_update isn't necessary as this is just a rhs
             ! contribution
             if (have_option('/ocean_forcing/tidal_forcing') .or. &
-               &have_option('/ocean_forcing/shelf')) then
+                &have_option('/ocean_forcing/shelf')) then
             ewrite(1,*) "shelf: Entering compute_pressure_and_tidal_gradient"
-               call compute_pressure_and_tidal_gradient(state(istate), delta_u, ct_m(istate)%ptr, p_theta, x)
+              call compute_pressure_and_tidal_gradient(state(istate), delta_u, ct_m(istate)%ptr, p_theta, x)
+            else if (remove_hydrostatic_balance_pressure .and.  has_scalar_field(state(istate), "HydroStaticBalancePressure") .and. .not. has_scalar_field(state(istate), hp_name)) then
+               hb_pressure => extract_scalar_field(state(istate), "HydroStaticBalancePressure")
+              call allocate(combined_p, p_theta%mesh, "CombinedPressure")
+              do node=1,node_count(p_theta)
+                call set(combined_p, node, node_val(p_theta, node) - node_val(hb_pressure, node))
+              end do
+              call mult_T(delta_u, ct_m(istate)%ptr, combined_p)
+              call deallocate(combined_p)
             else
-               call mult_T(delta_u, ct_m(istate)%ptr, p_theta)
+              call mult_T(delta_u, ct_m(istate)%ptr, p_theta)
             end if
 
             if (dg(istate)) then
