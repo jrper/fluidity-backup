@@ -34,7 +34,6 @@ module equation_of_state
   use global_parameters, only: OPTION_PATH_LEN
   use spud
   use sediment, only: get_sediment_name, get_nSediments
-  use hydrostatic_pressure
   implicit none
   
   private
@@ -287,6 +286,9 @@ contains
     character(len=OPTION_PATH_LEN) :: eos_path
     type(scalar_field) :: drhodp_local
 
+    character(len = *), parameter:: hp_name = "HydrostaticPressure"
+    character(len = *), parameter:: hpg_name = "HydrostaticPressureGradient"
+
     ewrite(1,*) 'Entering compressible_eos'
     
     if (present(drhodp)) then
@@ -389,6 +391,9 @@ contains
     real :: bulk_sound_speed_squared, atmospheric_pressure
     type(scalar_field) :: energy_remap, pressure_remap, density_remap
     logical :: incompressible
+
+    character(len = *), parameter:: hp_name = "HydrostaticPressure"
+    character(len = *), parameter:: hpg_name = "HydrostaticPressureGradient"
     
     call get_option(trim(eos_path)//'/compressible/stiffened_gas/reference_density', &
                         reference_density, default=0.0)
@@ -515,6 +520,9 @@ contains
 !     type(scalar_field) :: pressure_remap, density_remap, temperature_remap
     logical :: incompressible
     integer :: node
+
+    character(len = *), parameter:: hp_name = "HydrostaticPressure"
+    character(len = *), parameter:: hpg_name = "HydrostaticPressureGradient"
     
     call get_option(trim(eos_path)//'/compressible/giraldo2/reference_pressure', &
                     p_0, default=1.0e5)
@@ -658,18 +666,22 @@ contains
               call set(pressure, drhodp)
               call invert(pressure)
               
-              if (has_scalar_field(state,hp_name)) then
-                 hp => extract_scalar_field(state,hp_name)
-                 allocate(hp_local)
-                 call allocate(hp_local,hp%mesh)
-                 call set(hp_local,hp)
-                 call scale(hp_local,drhodp)
-                 call addto(density_remap,hp_local,-1.0)
-                 call deallocate(hp_local)
-                 deallocate(hp_local)
-              end if
+!              if (has_scalar_field(state,hp_name)) then
+!                 hp => extract_scalar_field(state,hp_name)
+!                 allocate(hp_local)
+!                 call allocate(hp_local,hp%mesh)
+!                 call set(hp_local,hp)
+!                 call scale(hp_local,drhodp)
+!                 call addto(density_remap,hp_local,-1.0)
+!                 call deallocate(hp_local)
+!                 deallocate(hp_local)
+!              end if
 
               call scale(pressure, density_remap)
+              if (has_scalar_field(state,hp_name)) then
+                 hp => extract_scalar_field(state,hp_name)
+                 call addto(pressure,hp,scale=-1.0)
+              end if
 
               call deallocate(density_remap)
             else

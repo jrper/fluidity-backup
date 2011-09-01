@@ -61,6 +61,7 @@
           <steady_state>
             <include_in_steady_state/>
           </steady_state>
+          <consistent_interpolation/>
         </diagnostic>
       </scalar_field>
       <scalar_field name="DistanceToBottom" rank="0">
@@ -99,10 +100,10 @@
       <real_value rank="0">0.0</real_value>
     </current_time>
     <timestep>
-      <real_value rank="0">4.0</real_value>
+      <real_value rank="0">0.0001</real_value>
     </timestep>
     <finish_time>
-      <real_value rank="0">2800.0</real_value>
+      <real_value rank="0">40.0</real_value>
     </finish_time>
     <nonlinear_iterations>
       <integer_value rank="0">100</integer_value>
@@ -210,7 +211,8 @@
   g=9.81
   expres=1-g*X[1]/(theta0*cp)
   
-  pressure=p0*expres**(cp/R)
+  pressure=0.0*p0*expres**(cp/R)
+  
   return pressure</string_value>
           </python>
         </initial_condition>
@@ -254,7 +256,7 @@
   R=cp-cv
   theta0=300.0
   g=9.81
-  expres=1-g*X[1]/(theta0*cp)
+  expres=1-g*X[0]/(theta0*cp)
   
   pressure=p0*expres**(cp/R)
  
@@ -448,7 +450,7 @@
   R=cp-cv
   theta0=300.0
   g=9.81
-  expres=1-g*X[1]/(theta0*cp)
+  expres=1-g*X[0]/(theta0*cp)
  
   x_c=500.0
   y_c=350.0
@@ -633,7 +635,12 @@ for n in range(field.node_count):
         <spatial_discretisation>
           <continuous_galerkin>
             <stabilisation>
-              <no_stabilisation/>
+              <streamline_upwind>
+                <nu_bar_optimal/>
+                <nu_scale name="0.5">
+                  <real_value shape="1" rank="0">0.5</real_value>
+                </nu_scale>
+              </streamline_upwind>
             </stabilisation>
           </continuous_galerkin>
         </spatial_discretisation>
@@ -643,12 +650,12 @@ for n in range(field.node_count):
               <integer_value rank="0">30</integer_value>
             </restart>
           </iterative_method>
-          <preconditioner name="none"/>
+          <preconditioner name="sor"/>
           <relative_error>
             <real_value rank="0">1.0e-6</real_value>
           </relative_error>
           <max_iterations>
-            <integer_value rank="0">10000</integer_value>
+            <integer_value rank="0">5000</integer_value>
           </max_iterations>
           <never_ignore_solver_failures/>
           <cache_solver_context/>

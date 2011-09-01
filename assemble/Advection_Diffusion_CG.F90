@@ -468,8 +468,8 @@ contains
          call zero(complete_pressure)
       end if
 
-      call set(complete_pressure,pressure)
-
+      call addto(complete_pressure,pressure)
+      pressure => complete_pressure
 
 
       ewrite_minmax(pressure%val)
@@ -487,8 +487,14 @@ contains
                                         positions, old_positions, new_positions, &
                                         velocity, grid_velocity, &
                                         source, absorption, diffusivity, &
-                                        density, olddensity, complete_pressure)
+                                        density, olddensity, pressure)
     end do
+
+
+    if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
+       call deallocate(complete_pressure)
+       deallocate(complete_pressure)
+    end if
 
     ! as part of assembly include the already discretised optional source
     ! needed before applying direchlet boundary conditions
@@ -536,8 +542,7 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
-    call deallocate(complete_pressure)
-    deallocate(complete_pressure)
+
     
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"
     

@@ -39,7 +39,6 @@ module compressible_projection
   use fefields, only: compute_lumped_mass
   use state_fields_module
   use upwind_stabilisation
-  use hydrostatic_pressure, only: hp_name
   implicit none 
 
   ! Buffer for output messages.
@@ -114,6 +113,9 @@ contains
     integer :: stat
 
     real :: atmospheric_pressure, theta
+    
+    character(len = *), parameter :: hp_name = "HydrostaticPressure"
+
 
     ewrite(1,*) 'Entering assemble_1mat_compressible_projection_cv'
     
@@ -275,6 +277,7 @@ contains
     logical, save :: pressure_warned=.false.
 
     real :: atmospheric_pressure
+    character(len = *), parameter :: hp_name = "HydrostaticPressure"
 
     ewrite(1,*) 'Entering assemble_mmat_compressible_projection_cv'
 

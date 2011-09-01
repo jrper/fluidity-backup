@@ -642,7 +642,7 @@ for n in range(field.node_count):
     <scalar_field name="PressurePert" rank="0">
       <diagnostic>
         <algorithm name="scalar_python_diagnostic" material_phase_support="single">
-          <string_value type="python" lines="20">y=state.scalar_fields["ycoord"]
+          <string_value lines="20" type="python">y=state.scalar_fields["ycoord"]
 u=state.vector_fields["Velocity"]
 inten=state.scalar_fields["InternalEnergy"]
 pres=state.scalar_fields["Pressure"]
