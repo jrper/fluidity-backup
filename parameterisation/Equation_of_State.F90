@@ -275,10 +275,11 @@ contains
     
   end subroutine mcD_J_W_F2002
   
-  subroutine compressible_eos(state, density, pressure, drhodp)
+  subroutine compressible_eos(state, density, pressure,full_pressure,drhodp)
 
     type(state_type), intent(inout) :: state
     type(scalar_field), intent(inout), optional :: density, pressure, drhodp
+    type(scalar_field), intent(inout), optional :: full_pressure
 
     type(scalar_field), pointer :: hp
     integer :: stat
@@ -299,10 +300,15 @@ contains
       if (present(pressure)) then
          assert(drhodp%mesh==pressure%mesh)
       end if
+      if (present(full_pressure)) then
+         assert(drhodp%mesh==full_pressure%mesh)
+      end if
    else if (present(density)) then
       call allocate(drhodp_local, density%mesh, 'Localdrhop')
    else if (present(pressure)) then
       call allocate(drhodp_local, pressure%mesh, 'Localdrhop')
+   else if (present(full_pressure)) then
+      call allocate(drhodp_local, full_pressure%mesh, 'Localdrhop')
    else
       FLAbort("No point in being in here if you don't want anything out.")
    end if
@@ -319,6 +325,7 @@ contains
          
          ! standard stiffened gas eos
          
+         
          call compressible_eos_stiffened_gas(state, eos_path, drhodp_local, &
             density=density, pressure=pressure)
          
@@ -329,7 +336,7 @@ contains
         ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
         
         call compressible_eos_giraldo(state, eos_path, drhodp_local, &
-            density=density, pressure=pressure)
+            density=density, pressure=pressure,full_pressure=full_pressure)
 
 
       elseif(have_option(trim(eos_path)//'/compressible/foam')) then
@@ -366,6 +373,10 @@ contains
 
     if(present(pressure)) then
       ewrite_minmax(pressure%val)
+    end if
+
+    if(present(full_pressure)) then
+      ewrite_minmax(full_pressure%val)
     end if
 
     if(present(drhodp)) then      
@@ -499,19 +510,20 @@ contains
   end subroutine compressible_eos_stiffened_gas
   
   subroutine compressible_eos_giraldo(state, eos_path, drhodp, &
-    density, pressure)
+    density, pressure,full_pressure)
     ! Eq. of state commonly used in atmospheric applications. See
     ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
     ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
     type(state_type), intent(inout) :: state
     character(len=*), intent(in):: eos_path
     type(scalar_field), intent(inout) :: drhodp
-    type(scalar_field), intent(inout), optional :: density, pressure
+    type(scalar_field), intent(inout), optional :: density
+    type(scalar_field), intent(inout), optional, target :: pressure, full_pressure
       
     ! locals
     integer :: stat, gstat, cstat, pstat, tstat
     type(scalar_field), pointer :: pressure_local, energy_local, density_local, &
-                                   & temperature_local,complete_pressure,hp, hp_local
+                                   & temperature_local,complete_pressure,hp, hp_local, opressure
     type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
                           & temperature_remap
     real :: reference_density, p_0, c_p, c_v
@@ -622,6 +634,7 @@ contains
 
             if (has_scalar_field(state,hp_name)) then
                hp=>extract_scalar_field(state,hp_name)
+               ewrite_minmax(hp%val)
                call addto(complete_pressure,hp)
             end if
             if (stat==0) then
@@ -645,12 +658,20 @@ contains
               FLExit('No Pressure in material_phase::'//trim(state%name))
             end if
           end if
-        end if
+       end if
 
-        if(present(pressure)) then
+       if(present(pressure) .or. present(full_pressure)) then
+          if (present(pressure)) then
+              opressure=>pressure
+          else if (present(full_pressure)) then
+             opressure=>full_pressure
+              ewrite(1,*) "Calculating full pressure"
+          else
+             FLAbort(" don't ask me!")
+          end if
           if(incompressible) then
             ! pressure is unrelated to density in this case
-            call zero(pressure)
+            call zero(opressure)
           else
             ! calculate the pressure using the eos and the calculated (probably prognostic)
             ! density
@@ -658,13 +679,13 @@ contains
             density_local=>extract_scalar_field(state,'Density',stat=stat)
 
             if (stat==0) then
-              assert(pressure%mesh==drhodp%mesh)
+              assert(opressure%mesh==drhodp%mesh)
               
               call allocate(density_remap, drhodp%mesh, "RemappedDensity")
               call remap_field(density_local, density_remap)
               
-              call set(pressure, drhodp)
-              call invert(pressure)
+              call set(opressure, drhodp)
+              call invert(opressure)
               
 !              if (has_scalar_field(state,hp_name)) then
 !                 hp => extract_scalar_field(state,hp_name)
@@ -677,10 +698,13 @@ contains
 !                 deallocate(hp_local)
 !              end if
 
-              call scale(pressure, density_remap)
-              if (has_scalar_field(state,hp_name)) then
-                 hp => extract_scalar_field(state,hp_name)
-                 call addto(pressure,hp,scale=-1.0)
+              call scale(opressure, density_remap)
+
+              if (present(pressure)) then
+                 if (has_scalar_field(state,hp_name)) then
+                    hp => extract_scalar_field(state,hp_name)
+                    call addto(opressure,hp,scale=-1.0)
+                 end if
               end if
 
               call deallocate(density_remap)

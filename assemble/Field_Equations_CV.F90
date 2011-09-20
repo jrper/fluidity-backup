@@ -793,9 +793,9 @@ contains
       ! divergence matrix for energy equation
       type(block_csr_matrix) :: CT_m
       ! pressure
-      type(scalar_field), pointer :: p, hp, complete_p
+      type(scalar_field), pointer :: p, hp
       ! the assembled pressure term
-      type(scalar_field) :: pterm
+      type(scalar_field) :: pterm, complete_p
       ! atmospheric pressure for the energy equation
       real :: atmospheric_pressure
 
@@ -1076,7 +1076,6 @@ contains
         ! construct rhs
         p=>extract_scalar_field(state(1), "Pressure")
 
-        allocate(complete_p)
         call allocate(complete_p, p%mesh, "Full Pressure", field_type=FIELD_TYPE_CONSTANT)
         call zero(complete_p)
         ! Set up for possible hydrostatic contribution
@@ -1087,7 +1086,7 @@ contains
               call remap_field(hp,complete_p)
            end if
         end do
-        call addto(complete_p,p)
+       call addto(complete_p,p)
         ewrite_minmax(complete_p%val)
         assert(complete_p%mesh==tfield%mesh)
         ! halo exchange not necessary as it is done straight after solve
@@ -1111,7 +1110,6 @@ contains
         call deallocate(CT_m)
         call deallocate(pterm)
         call deallocate(complete_p)
-        deallocate(complete_p)
 
         ! construct M
         if(explicit) then

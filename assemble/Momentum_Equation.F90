@@ -200,7 +200,7 @@
          type(vector_field) :: delta_u
 
          ! Dummy fields
-         type(scalar_field), pointer :: dummyscalar, dummydensity, dummypressure
+         type(scalar_field), pointer :: dummyscalar, dummydensity, dummypressure, sfield
 
          ! Pressure and density
          type(scalar_field), pointer :: p, density
@@ -503,7 +503,10 @@
             call profiler_toc(u, "assembly")
 
             if(has_scalar_field(state(istate), hp_name)) then
-               call calculate_hydrostatic_pressure(state(istate))
+               sfield=>extract_scalar_field(state(istate), hp_name)
+               if (.not. have_option(trim(sfield%option_path)//"/prescribed"))then
+                  call calculate_hydrostatic_pressure(state(istate))
+               end if
             end if
             if(has_vector_field(state(istate), hpg_name)) then
                call calculate_hydrostatic_pressure_gradient(state(istate))
@@ -1403,7 +1406,7 @@
                 &have_option('/ocean_forcing/shelf')) then
             ewrite(1,*) "shelf: Entering compute_pressure_and_tidal_gradient"
               call compute_pressure_and_tidal_gradient(state(istate), delta_u, ct_m(istate)%ptr, p_theta, x)
-            else if (remove_hydrostatic_balance_pressure .and.  has_scalar_field(state(istate), "HydroStaticBalancePressure") .and. .not. has_scalar_field(state(istate), hp_name)) then
+            else if (has_scalar_field(state(istate), "HydroStaticBalancePressure")) then
                hb_pressure => extract_scalar_field(state(istate), "HydroStaticBalancePressure")
               call allocate(combined_p, p_theta%mesh, "CombinedPressure")
               do node=1,node_count(p_theta)

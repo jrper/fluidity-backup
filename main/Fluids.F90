@@ -104,6 +104,7 @@ module fluids_module
   use hyperlight
 #endif
   use multiphase_module
+  use compressible_projection
 
   implicit none
 
@@ -235,6 +236,7 @@ contains
        allocate(POD_state(1:0))
     end if
 
+
     ! Check the diagnostic field dependencies for circular dependencies
     call check_diagnostic_dependencies(state)
 
@@ -331,6 +333,13 @@ contains
     !    they will be updated (inside the call)
     call move_mesh_free_surface(state, initialise=.true.)
 
+
+
+    ! Initialise compressible state variables
+    if (have_option('/material_phase::Gas/equation_of_state/compressible')) then
+       call compressible_initialise(state)
+    end if
+
     call run_diagnostics(state)
 
     !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -416,6 +425,7 @@ contains
             call melt_bc(state(1))
           endif
     end if
+
     
     ! Checkpoint at start
     if(do_checkpoint_simulation(dump_no)) call checkpoint_simulation(state, cp_no = dump_no)

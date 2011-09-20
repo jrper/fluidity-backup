@@ -64,11 +64,18 @@ scalar_boundary_conditions =
             element type {
                attribute name { "k_epsilon" },
                ## Select high/low Reynolds number wall functions for k and epsilon fields.
-               element wall_functions {
-                  element string_value {
-                  "low_Re"|"high_Re"
-                  }
+               element string_value {
+               "low_Re"|"high_Re"
                }
+            }|
+            ## Flux boundary condition. Currently only works with a control_volume 
+            ## discretisation.
+            ##
+            ## This weakly enforces the total (advective plus diffusive) flux across 
+            ## a boundary when solving the advection-diffusion equation.
+            element type {
+               attribute name { "flux" },
+               input_choice_real
             }
          )
       }
@@ -162,11 +169,11 @@ prognostic_scalar_field =
          ## diagnostic/algorithm(internal).
          element subgridscale_parameterisation {
             attribute name { "k-epsilon"},
-            ## Set Prandtl number for this field
-            ## (ratio of momentum diffusivity to field diffusivity)
+            ## Option to set the Prandtl number (ratio of momentum diffusivity to field diffusivity)
+            ##  for this field. Default = 1.0 if not specified.
             element Prandtl_number {
                input_choice_real
-            }
+            }?
          }|
          element subgridscale_parameterisation {
             attribute name { "prescribed_diffusivity"}
@@ -1153,6 +1160,12 @@ prognostic_pressure_field =
                element low_re_p_correction_fix {
                   empty
                }?
+            }|
+            ## Select this discretisation if Pressure is defined on a discontinous mesh.
+            ## Only works if your Velocity (or Momentum) is continuous. With this option
+            ## the continuity equation is never integrated by parts.
+            element discontinuous_galerkin {
+               empty
             }|
             element control_volumes {
                empty

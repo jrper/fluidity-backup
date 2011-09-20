@@ -50,6 +50,8 @@ module hydrostatic_pressure
   use profiler
   use shape_functions
   use solvers
+  use equation_of_state
+  use state_fields_module
   
   implicit none
 
@@ -311,6 +313,12 @@ module hydrostatic_pressure
     type(csr_matrix), pointer :: matrix
     type(scalar_field) :: rhs
     logical :: assemble_matrix
+
+
+    type(scalar_field), pointer :: p, p_eos,density,buoyancy
+    type(scalar_field), pointer :: hydrostatic_density
+    integer :: stat
+    real :: gravity_magnitude
         
     ewrite(1,*) 'In calculate_hydrostatic_pressure_cg'
 
@@ -324,7 +332,22 @@ module hydrostatic_pressure
     call profiler_toc(hp, "assembly")
     
     call petsc_solve(hp, matrix, rhs)
-    
+
+    if (.true.) then
+       !< Let the hydrostatic pressure also contain the thermodynamic component
+
+       call addto(hp,-mean(hp))
+       p=>extract_scalar_field(state,'Pressure',stat=stat)
+
+       allocate(p_eos)
+       call allocate(p_eos,hp%mesh,'pressureEOS')
+       call compressible_eos(state,full_pressure=p_eos)
+     !  call addto(hp,mean(p_eos))
+       call deallocate(p_eos)
+       deallocate(p_eos)
+
+    endif 
+
     call deallocate(rhs)
 
   end subroutine calculate_hydrostatic_pressure_cg

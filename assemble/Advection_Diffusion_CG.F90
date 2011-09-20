@@ -226,10 +226,10 @@ contains
     type(vector_field) :: velocity
     type(vector_field), pointer :: gravity_direction, velocity_ptr, grid_velocity
     type(vector_field), pointer :: positions, old_positions, new_positions
-    type(scalar_field), target :: dummydensity
+    type(scalar_field), target  :: dummydensity, complete_pressure
     type(scalar_field), pointer :: density, olddensity
     character(len = FIELD_NAME_LEN) :: density_name
-    type(scalar_field), pointer :: pressure, complete_pressure, hp
+    type(scalar_field), pointer :: pressure, hp
         
     ewrite(1, *) "In assemble_advection_diffusion_cg"
     
@@ -458,9 +458,7 @@ contains
                       
       pressure=>extract_scalar_field(state, "Pressure")
 
-      allocate(complete_pressure)
       call allocate(complete_pressure,pressure%mesh,"CompletePressure")
-
       if (has_scalar_field(state,hp_name)) then
          hp => extract_scalar_field(state,hp_name)
          call remap_field(hp,complete_pressure)
@@ -489,12 +487,6 @@ contains
                                         source, absorption, diffusivity, &
                                         density, olddensity, pressure)
     end do
-
-
-    if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
-       call deallocate(complete_pressure)
-       deallocate(complete_pressure)
-    end if
 
     ! as part of assembly include the already discretised optional source
     ! needed before applying direchlet boundary conditions
@@ -542,6 +534,8 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
+    call deallocate(complete_pressure)
+    
 
     
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"

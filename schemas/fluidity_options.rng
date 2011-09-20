@@ -4730,10 +4730,16 @@ for hp.</a:documentation>
         <attribute name="name">
           <value>HydrostaticPressure</value>
         </attribute>
-        <element name="prognostic">
-          <ref name="mesh_choice"/>
-          <ref name="prognostic_hydrostatic_pressure_field"/>
-        </element>
+	<choice>
+	  <element name="prognostic">
+	    <ref name="mesh_choice"/>
+	    <ref name="prognostic_hydrostatic_pressure_field"/>
+	  </element>
+	  <element name="prescribed">
+	    <ref name="mesh_choice"/>
+	    <ref name="prescribed_scalar_field"/>
+	  </element>
+	</choice>
       </element>
       <element name="scalar_field">
         <a:documentation>**UNDER TESTING**

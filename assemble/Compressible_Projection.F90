@@ -39,13 +39,15 @@ module compressible_projection
   use fefields, only: compute_lumped_mass
   use state_fields_module
   use upwind_stabilisation
+  use hydrostatic_pressure, only : hp_name, calculate_hydrostatic_pressure
+
   implicit none 
 
   ! Buffer for output messages.
   character(len=255), private :: message
 
   private
-  public :: assemble_compressible_projection_cv, assemble_compressible_projection_cg, update_compressible_density
+  public :: assemble_compressible_projection_cv, assemble_compressible_projection_cg, update_compressible_density, compressible_initialise
 
   ! Stabilisation schemes
   integer, parameter :: STABILISATION_NONE = 0, &
@@ -165,7 +167,6 @@ contains
       end if
 
       call allocate(lhsfield, pressure%mesh, "LHSField")
-
       call allocate(eospressure, pressure%mesh, 'EOSPressure')
       call allocate(drhodp, pressure%mesh, 'DerivativeDensityWRTBulkPressure')
 
@@ -190,9 +191,12 @@ contains
 !      ( (1./dt)*(olddensity - density + drhodp*(eospressure - (pressure + atmospheric_pressure)))
 !       +(absorption)*(drhodp*theta_pg*(eospressure - (pressure + atmospheric_pressure)) - theta_pg*density - (1-theta_pg)*olddensity)
 !       +source)
-      call remap_field(hydrostatic_pressure,rhs)
-      call addto(rhs, pressure)
-      call addto(rhs, atmospheric_pressure)
+
+
+!      call remap_field(hydrostatic_pressure,rhs)
+!     call addto(rhs, pressure)
+      call remap_field(pressure,rhs)
+!      call addto(rhs, atmospheric_pressure)
       call scale(rhs, -1.0)
       call addto(rhs, eospressure)
       call scale(rhs, drhodp)
@@ -209,8 +213,7 @@ contains
       if(stat==0) then
         call allocate(absrhs, absorption%mesh, "AbsorptionRHS")
         
-        call remap_field(hydrostatic_pressure,absrhs)
-        call addto(absrhs, pressure)
+        call remap_field(pressure,absrhs)
         call addto(absrhs, atmospheric_pressure)
         call scale(absrhs, -1.0)
         call addto(absrhs, eospressure)
@@ -233,11 +236,6 @@ contains
       
       call deallocate(eospressure)
       call deallocate(drhodp)
-
-      if (.not. has_scalar_field(state,"HydrostaticPressure")) then
-         call deallocate(hydrostatic_pressure)
-         deallocate(hydrostatic_pressure)
-      end if
 
       call deallocate(lhsfield)
       call deallocate(invnorm)
@@ -269,9 +267,9 @@ contains
                                    volumefraction, oldvolumefraction, materialdensity, oldmaterialdensity
     type(scalar_field), pointer :: dummy_ones
 
-    type(scalar_field), pointer :: pressure, hydrostatic_pressure, complete_pressure
+    type(scalar_field), pointer :: pressure, hydrostatic_pressure
     type(vector_field), pointer :: positions
-    type(scalar_field) :: lumped_mass, tempfield
+    type(scalar_field) :: lumped_mass, tempfield, complete_pressure
 
     ! Cause the pressure warnings to only happen once.
     logical, save :: pressure_warned=.false.
@@ -296,7 +294,6 @@ contains
        pressure_warned=.true.
     end if
 
-    allocate(complete_pressure)
     call allocate(complete_pressure,pressure%mesh,"CompletePressure")
 
 
@@ -307,7 +304,6 @@ contains
        call zero(complete_pressure)
     end if
     
-
     call addto(complete_pressure,pressure)
     call zero(rhs)
    
@@ -408,7 +404,6 @@ contains
         call deallocate(dummy_ones)
         deallocate(dummy_ones)
         call deallocate(complete_pressure)
-        deallocate(complete_pressure)
 
       end if
 
@@ -472,7 +467,7 @@ contains
     real, dimension(:,:,:), allocatable :: j_mat
     
     real, dimension(:), allocatable :: density_at_quad, olddensity_at_quad, p_at_quad, &
-                                      drhodp_at_quad, eosp_at_quad, abs_at_quad
+                                      drhodp_at_quad, eosp_at_quad, fulleosp_at_quad,abs_at_quad,oldhp_at_quad
     real, dimension(:,:), allocatable :: nlvelocity_at_quad
 
     ! loop integers
@@ -481,8 +476,9 @@ contains
     ! pointer to coordinates
     type(vector_field), pointer :: coordinate, nonlinearvelocity, velocity
     type(scalar_field), pointer :: pressure, density, olddensity
-    type(scalar_field), pointer :: source, absorption
-    type(scalar_field) :: eospressure, drhodp
+    type(scalar_field), pointer :: source, absorption, old_hp
+    type(scalar_field) :: eospressure, eosfullpressure, drhodp
+    type(scalar_field),target :: dummyscalar
     real :: theta, atmospheric_pressure
 
     real, dimension(:,:), allocatable :: ele_mat
@@ -521,7 +517,7 @@ contains
       nonlinearvelocity=>extract_vector_field(state, "NonlinearVelocity") ! maybe this should be updated after the velocity solve?
       
       pressure => extract_scalar_field(state, "Pressure")
-  
+
       call get_option(trim(pressure%option_path)//'/prognostic/atmospheric_pressure', &
                       atmospheric_pressure, default=0.0)
 
@@ -529,14 +525,26 @@ contains
       ! the multiplication of the eos (of course that may not be possible in which case
       ! something should be done at the gauss points instead)
       call allocate(eospressure, density%mesh, 'EOSPressure')
+      call allocate(eosfullpressure, density%mesh, 'EOSFullPressure')
       call allocate(drhodp, density%mesh, 'DerivativeDensityWRTBulkPressure')
+      call allocate(dummyscalar, density%mesh, 'DummyField')
   
       call zero(eospressure)
+      call zero(eosfullpressure)
       call zero(drhodp)
+      call zero(dummyscalar)
   
       ! this needs to be changed to be evaluated at the quadrature points!
       call compressible_eos(state, pressure=eospressure, drhodp=drhodp)
-  
+      call compressible_eos(state,full_pressure=eosfullpressure)
+
+      if (has_scalar_field(state,"OldHydrostaticPressure")) then
+         old_hp=>extract_scalar_field(state,"OldHydrostaticPressure")
+      else
+         old_hp=>dummyscalar
+      end if
+
+
       ewrite_minmax(density%val)
       ewrite_minmax(olddensity%val)
 
@@ -569,7 +577,9 @@ contains
               j_mat(field%dim, field%dim, ele_ngi(density, 1)), &
               drhodp_at_quad(ele_ngi(drhodp, 1)), &
               eosp_at_quad(ele_ngi(eospressure, 1)), &
+              fulleosp_at_quad(ele_ngi(eosfullpressure, 1)), &
               abs_at_quad(ele_ngi(density, 1)), &
+              oldhp_at_quad(ele_ngi(old_hp, 1)), &
               p_at_quad(ele_ngi(pressure, 1)))
       
       do ele=1, element_count(test_mesh)
@@ -582,11 +592,13 @@ contains
         olddensity_at_quad = ele_val_at_quad(olddensity, ele)
         
         p_at_quad = ele_val_at_quad(pressure, ele) + atmospheric_pressure
+        oldhp_at_quad = ele_val_at_quad(old_hp, ele)
                           
         nlvelocity_at_quad = ele_val_at_quad(nonlinearvelocity, ele)
         
         drhodp_at_quad = ele_val_at_quad(drhodp, ele)
         eosp_at_quad = ele_val_at_quad(eospressure, ele)
+        fulleosp_at_quad = ele_val_at_quad(eosfullpressure, ele)
         
         select case(stabilisation_scheme)
           case(STABILISATION_SUPG)
@@ -594,14 +606,14 @@ contains
             test_shape = make_supg_shape(test_shape_ptr, dtest_t, nlvelocity_at_quad, j_mat, &
               & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
           case default
-            call transform_to_physical(coordinate, ele, detwei=detwei)
+            call transform_to_physical(coordinate, ele, detwei=detwei)           
             test_shape = test_shape_ptr
             call incref(test_shape)
         end select
         ! Important note: with SUPG the test function derivatives have not been
         ! modified.
   
-        ele_mat = (1./(dt*dt*theta_divergence*theta_pg))*shape_shape(test_shape, test_shape_ptr, detwei*drhodp_at_quad)
+        ele_mat = (1./(dt*dt*theta_divergence*theta_pg))*shape_shape(test_shape, test_shape_ptr, detwei*drhodp_at_quad) 
         !       /
         ! rhs = |test_shape* &
         !       /
@@ -636,6 +648,8 @@ contains
   
       call deallocate(drhodp)
       call deallocate(eospressure)
+      call deallocate(eosfullpressure)
+      call deallocate(dummyscalar)
     
     end if
 
@@ -660,6 +674,65 @@ contains
     end if
   
   end subroutine update_compressible_density
+
+
+  subroutine compressible_initialise(state)
+    type(state_type), dimension(:), intent(inout) :: state
+    type(scalar_field), pointer :: sfield,sfield2
+    integer :: stat, ic_count
+
+    ! Set up hydrostatic pressure if necessary before 
+    ! the first timestep (for sanity purposes)
+
+    if(has_scalar_field(state(1),"HydrostaticPressure")) then
+       sfield=>extract_scalar_field(state,"HydrostaticPressure",stat)
+       if (.not. have_option(trim(sfield%option_path)//"/prescribed"))then
+          sfield=>extract_scalar_field(state,"VelocityBuoyancyDensity",stat)
+          sfield2=>extract_scalar_field(state,"Density",stat)
+          call set(sfield,sfield2)
+          call calculate_hydrostatic_pressure(state(1))
+       end if
+    end if
+
+    ic_count=0
+
+    sfield=>extract_scalar_field(state,"Density",stat)
+    if (have_option(trim(sfield%option_path)//"/prognostic/initial_condition")) then
+       ic_count=ic_count+1
+    end if
+    sfield=>extract_scalar_field(state,"InternalEnergy",stat)
+    if (have_option(trim(sfield%option_path)//"/prognostic/initial_condition")) then
+       ic_count=ic_count+2
+    end if
+    sfield=>extract_scalar_field(state,"Pressure",stat)
+    if (.not. have_option(trim(sfield%option_path)//"/prognostic/initial_condition")) then
+       ic_count=ic_count+4
+    end if
+
+
+
+    ! Check for initial conditions in Density, Energy, Pressure. If too many
+    ! Then currently chooses to use internal energy and density
+
+    select case(ic_count)
+    case(0,1,2,4)
+       FLAbort("Need at least two initial conditions for some of  Density,Energy,Pressure")
+    case(3)
+       ewrite(1,*) "Calculating initial pressure from other fields"
+       sfield=>extract_scalar_field(state,"Pressure",stat)
+       call compressible_eos(state(1),pressure=sfield)
+    case(5)
+       ewrite(1,*) "Calculating initial density from other fields"
+       sfield=>extract_scalar_field(state,"Density",stat)
+       call compressible_eos(state(1),density=sfield)
+    case(6)
+       FLAbort("Currently requires an energy initial condition")
+    case(7)
+       ewrite(1,*), "Too many ICs specified. Using energy and density"
+       sfield=>extract_scalar_field(state,"Pressure",stat)
+       call compressible_eos(state(1),pressure=sfield)
+    end select
+  end subroutine compressible_initialise       
 
 end module compressible_projection
 
