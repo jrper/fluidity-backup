@@ -53,6 +53,7 @@ module advection_diffusion_DG
   use sparsity_patterns_meshes
   use diagnostic_fields, only: calculate_diagnostic_variable
   use global_parameters, only : FIELD_NAME_LEN
+  use field_options
 
   implicit none
 
@@ -106,6 +107,9 @@ module advection_diffusion_DG
   integer :: stabilisation_scheme
   integer, parameter :: NONE=0
   integer, parameter :: UPWIND=1
+
+  ! equation type
+  integer :: equation_type
 
   !IP penalty parameter
   real :: Interior_Penalty_Parameter, edge_length_power
@@ -417,6 +421,8 @@ contains
     call allocate(delta_T, T%mesh, trim(field_name)//"Change")
     delta_T%option_path = T%option_path
     call allocate(rhs, T%mesh, trim(field_name)//"RHS")
+
+    equation_type=equation_type_index(trim(t%option_path))
     
     call construct_advection_diffusion_dg(matrix, rhs, field_name, state,&
          velocity_name=velocity_name) 
@@ -699,6 +705,12 @@ contains
     real :: gravity_magnitude
     real :: mixing_diffusion_amplitude
 
+    !! Pressure and density for internal energy equation
+    type(scalar_field), pointer :: pressure, old_pressure, energy_density, old_energy_density
+    character(len = FIELD_NAME_LEN) :: density_name
+    type(scalar_field), allocatable :: particle_fraction(:)
+    real, allocatable :: particle_densities(:)
+
     !! Mesh for auxiliary variable
     type(mesh_type), save :: q_mesh
 
@@ -824,6 +836,39 @@ contains
        include_advection=.true.
     end if
 
+    if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
+       pressure => extract_scalar_field(state,"Pressure",stat=stat)
+       
+       if (stat/=0) then
+          FLAbort("Internal eqnergy equation requires pressure term, but none in state")
+       end if
+       old_pressure => extract_scalar_field(state,"OldPressure",stat=stat)
+       
+       call get_option(trim(t%option_path)//'/prognostic/equation[0]/density[0]/name', &
+                      density_name)
+       energy_density=>extract_scalar_field(state, trim(density_name))
+       ewrite_minmax(energy_density)
+       
+       old_energy_density=>extract_scalar_field(state, "Old"//trim(density_name))
+       ewrite_minmax(old_energy_density)
+
+       if (has_scalar_field(state,"CloudWaterFraction")) then
+          allocate(particle_fraction(1),particle_densities(1))
+          particle_fraction=(/extract_scalar_field(state,"CloudWaterFraction")/)
+          particle_densities=(/1024.0/)
+       else
+          allocate(particle_fraction(0),particle_densities(0))
+       end if
+  
+
+
+    else
+       ! Point these at something, so that the field dimensions are sane
+       energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity")
+       old_energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity")
+       allocate(particle_fraction(0),particle_densities(0))
+    end if
+
     ! Retrieve scalar options from the options dictionary.
     if (.not.semi_discrete) then
        call get_option(trim(T%option_path)//&
@@ -916,11 +961,17 @@ contains
       ! TODO: Align this direction with gravity local to an element
     end if
 
+
+   
+
     element_loop: do ELE=1,element_count(T)
        
        call construct_adv_diff_element_dg(ele, big_m, rhs, big_m_diff,&
             & rhs_diff, X, X_old, X_new, T, U_nl, U_mesh, Source, &
-            Absorption, Diffusivity, bc_value, bc_type, q_mesh, mass, &
+            Absorption, Diffusivity,&
+            pressure, old_pressure, energy_density, old_energy_density,&
+            particle_fraction, particle_densities, &
+            bc_value, bc_type, q_mesh, mass, &
             & buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude) 
        
     end do element_loop
@@ -1028,6 +1079,8 @@ contains
   subroutine construct_adv_diff_element_dg(ele, big_m, rhs, big_m_diff,&
        & rhs_diff, &
        & X, X_old, X_new, T, U_nl, U_mesh, Source, Absorption, Diffusivity,&
+       & pressure, old_pressure, energy_density, old_energy_density, &
+       & particle_fractions, particle_densities, &
        & bc_value, bc_type, &
        & q_mesh, mass, buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude)
     !!< Construct the advection_diffusion equation for discontinuous elements in
@@ -1054,6 +1107,15 @@ contains
     type(vector_field), pointer :: X_old, X_new, U_mesh
 
     type(scalar_field), intent(in) :: T, Source, Absorption
+    ! Modifications for internal energy equation
+    type(scalar_field), intent(in) ::pressure, old_pressure, energy_density, old_energy_density
+    real, dimension(ele_ngi(energy_density,ele)) :: en_den_ele, old_en_den_ele, incompfix
+    real, dimension(ele_loc(energy_density, ele), ele_ngi(energy_density, ele), mesh_dim(T)) ::&
+         & ded_t 
+
+    type(scalar_field),dimension(:),intent(in) :: particle_fractions
+    real, dimension(:), intent(in) :: particle_densities
+
     !! Diffusivity
     type(tensor_field), intent(in) :: Diffusivity
 
@@ -1086,9 +1148,10 @@ contains
          & Diffusivity_mat
     real, dimension(Diffusivity%dim(1), Diffusivity%dim(2), &
          & ele_loc(Diffusivity,ele)) :: Diffusivity_ele
-    
 
-    ! Local assembly matrices.
+
+ 
+     ! Local assembly matrices.
     real, dimension(ele_loc(T,ele), ele_loc(T,ele)) :: l_T_mat
     real, dimension(ele_loc(T,ele)) :: l_T_rhs
 
@@ -1126,7 +1189,7 @@ contains
 
     ! Node and shape pointers.
     integer, dimension(:), pointer :: t_ele
-    type(element_type), pointer :: t_shape, u_shape, q_shape
+    type(element_type), pointer :: t_shape, u_shape, q_shape,en_den_shape
     ! Neighbours of this element.
     integer, dimension(:), pointer :: neigh, x_neigh
     ! Whether the tracer field is continuous.
@@ -1231,6 +1294,7 @@ contains
     t_shape=>ele_shape(T, ele)
     u_shape=>ele_shape(U_nl, ele)
     q_shape=>ele_shape(q_mesh, ele)
+    en_den_shape=>ele_shape(energy_density, ele)
 
     !==========================
     ! Coordinates
@@ -1251,6 +1315,9 @@ contains
     ! Transform U_nl derivatives and weights into physical space.
     call transform_to_physical(X,ele,&
          & u_shape , dshape=du_t)
+
+    call transform_to_physical(X,ele,&
+         & en_den_shape , dshape=ded_t)
     
     if ((include_diffusion.or.have_buoyancy_adjustment_by_vertical_diffusion).and..not.primal) then
        ! Transform q derivatives into physical space.
@@ -1348,16 +1415,37 @@ contains
     !  /
     !  | T T  dV
     !  / 
-    if(move_mesh) then
-      mass_mat = shape_shape(T_shape, T_shape, detwei_new)
-    else
-      mass_mat = shape_shape(T_shape, T_shape, detwei)
-    end if
+
+    select case(equation_type)
+    case(FIELD_EQUATION_ADVECTIONDIFFUSION)
+       if(move_mesh) then
+          mass_mat = shape_shape(T_shape, T_shape, detwei_new)
+       else
+          mass_mat = shape_shape(T_shape, T_shape, detwei)
+       end if
+    case(FIELD_EQUATION_INTERNALENERGY)
+       en_den_ele = ele_val_at_quad(energy_density, ele)
+       old_en_den_ele = ele_val_at_quad(old_energy_density, ele)
+       if(move_mesh) then
+          mass_mat = shape_shape(T_shape, T_shape, en_den_ele*detwei_new)
+       else
+          mass_mat = shape_shape(T_shape, T_shape, en_den_ele*detwei)
+       end if
+    end select
+
 
     if (include_advection) then
 
       ! Advecting velocity at quadrature points.
-      U_nl_q=ele_val_at_quad(U_nl,ele)
+      select case(equation_type)
+      case(FIELD_EQUATION_ADVECTIONDIFFUSION)
+         U_nl_q=ele_val_at_quad(U_nl,ele)
+      case(FIELD_EQUATION_INTERNALENERGY)
+         U_nl_q=ele_val_at_quad(U_nl,ele)
+         forall (i=1:2)
+            U_nl_q(i,:)=U_nl_q(i,:)*(beta*en_den_ele + (1.0 - beta)*old_en_den_ele)
+         end forall
+      end select
 
       if(integrate_conservation_term_by_parts) then
           ! Element advection matrix
@@ -1365,33 +1453,42 @@ contains
           !  - beta | (grad T dot U_nl) T Rho dV + (1. - beta) | T (U_nl dot grad T) Rho dV
           !         /                                          /
           
-          ! Introduce grid velocities in non-linear terms. 
-          Advection_mat = -beta* dshape_dot_vector_shape(dt_t, U_nl_q, t_shape, detwei)  &
-               + (1.-beta) * shape_vector_dot_dshape(t_shape, U_nl_q, dt_t, detwei)
-          if(move_mesh) then
-            if(integrate_by_parts_once) then
-              Advection_mat = Advection_mat &
-                              + dshape_dot_vector_shape(dt_t, ele_val_at_quad(U_mesh,ele), t_shape, detwei)
-            else
-              Advection_mat = Advection_mat &
-                              - shape_vector_dot_dshape(t_shape, ele_val_at_quad(U_mesh,ele), dt_t, detwei) &
-                              - shape_shape(t_shape, t_shape, ele_div_at_quad(U_mesh, ele, dug_t) * detwei)
-            end if
-          end if
+          ! Introduce grid velocities in non-linear terms.
+            Advection_mat = -beta* dshape_dot_vector_shape(dt_t, U_nl_q, t_shape, detwei)  &
+                 + (1.-beta) * shape_vector_dot_dshape(t_shape, U_nl_q, dt_t, detwei)
+               if(move_mesh) then
+                  if(integrate_by_parts_once) then
+                     Advection_mat = Advection_mat &
+                          + dshape_dot_vector_shape(dt_t, ele_val_at_quad(U_mesh,ele), t_shape, detwei)
+                  else
+                     Advection_mat = Advection_mat &
+                          - shape_vector_dot_dshape(t_shape, ele_val_at_quad(U_mesh,ele), dt_t, detwei) &
+                          - shape_shape(t_shape, t_shape, ele_div_at_quad(U_mesh, ele, dug_t) * detwei)
+                  end if
+               end if
        else
           ! Introduce grid velocities in non-linear terms. 
           if(move_mesh) then
             ! NOTE: modifying the velocities at the gauss points in this case!
             U_nl_q = U_nl_q - ele_val_at_quad(U_mesh, ele)
           end if
-          U_nl_div_q=ele_div_at_quad(U_nl, ele, du_t)
+          select case(equation_type)
+          case(FIELD_EQUATION_ADVECTIONDIFFUSION)
+             U_nl_div_q=ele_div_at_quad(U_nl, ele, du_t)
+          case(FIELD_EQUATION_INTERNALENERGY)
+             U_nl_div_q=ele_div_at_quad(U_nl, ele, du_t)*&
+             (beta*en_den_ele+(1.0-beta)*old_en_den_ele) &
+                  +sum(ele_val_at_quad(U_nl,ele)&
+                  & *(beta*ele_grad_at_quad(energy_density,ele,ded_t)&
+                  +(1.0 - beta)*ele_grad_at_quad(old_energy_density,ele,ded_t)),1)
+          end select
           
           if(integrate_by_parts_once) then
              ! Element advection matrix
              !    /                                          /
              !  - | (grad T dot U_nl) T Rho dV - (1. - beta) | T ( div U_nl ) T Rho dV
              !    /                                          /
-             Advection_mat = - dshape_dot_vector_shape(dt_t, U_nl_q, t_shape, detwei)  &
+             Advection_mat = - dshape_dot_vector_shape(dt_t, U_nl_q, t_shape,detwei)  &
                   - (1.-beta) * shape_shape(t_shape, t_shape, U_nl_div_q * detwei)
           else
              ! Element advection matrix
@@ -1514,6 +1611,22 @@ contains
     ! Source term
     l_T_rhs=l_T_rhs &
          + shape_rhs(T_shape, detwei*ele_val_at_quad(Source, ele))
+
+    ! Pressure contribution to internal energy equation.
+
+    if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
+       incompfix=0.0
+       do i =1,size(particle_fractions)
+          incompfix=incompfix-ele_val_at_quad(particle_fractions(i),ele)/particle_densities(i)
+       end do
+       incompfix=1.0+incompfix*(beta*en_den_ele+(1.0-beta)*old_en_den_ele)
+       l_T_rhs=l_T_rhs &
+            - shape_rhs(T_shape, incompfix*detwei*&
+            & ele_div_at_quad(U_nl,ele,du_t)* &
+            (beta*ele_val_at_quad(pressure, ele)&
+            + (1.0 - beta)*ele_val_at_quad(old_pressure, ele)))
+    end if
+       
          
     if(move_mesh) then
       l_T_rhs=l_T_rhs &
@@ -1627,6 +1740,7 @@ contains
           call construct_adv_diff_interface_dg(ele, face, face_2, ni,&
                & centre_vec,& 
                & big_m, rhs, Grad_T_mat, Div_T_mat, X, T, U_nl,&
+               & energy_density, old_energy_density,&
                & bc_value, bc_type, &
                & U_mesh, q_mesh, cdg_switch_in, &
                & primal_fluxes_mat, ele2grad_mat,diffusivity, &
@@ -1646,6 +1760,7 @@ contains
           call construct_adv_diff_interface_dg(ele, face, face_2, ni,&
                & centre_vec,&
                & big_m, rhs, Grad_T_mat, Div_T_mat, X, T, U_nl,&
+               energy_density,old_energy_density, &
                & bc_value, bc_type, &
                & U_mesh, q_mesh)
        end if
@@ -2212,6 +2327,7 @@ contains
   subroutine construct_adv_diff_interface_dg(ele, face, face_2, &
        ni, centre_vec,big_m, rhs, Grad_T_mat, Div_T_mat, &
        & X, T, U_nl,&
+       & energy_density, old_energy_density, &
        & bc_value, bc_type, &
        & U_mesh, q_mesh, CDG_switch_in, &
        & primal_fluxes_mat, ele2grad_mat,diffusivity, &
@@ -2229,6 +2345,7 @@ contains
     type(vector_field), intent(in) :: X, U_nl
     type(vector_field), pointer :: U_mesh
     type(scalar_field), intent(in) :: T
+    type(scalar_field), intent(in) :: energy_density, old_energy_density
     !! Mesh of the auxiliary variable in the second order operator.
     type(mesh_type), intent(in) :: q_mesh
     !! switch for CDG fluxes
@@ -2341,8 +2458,20 @@ contains
     if (include_advection.and.(flux_scheme==UPWIND_FLUX)) then
        
        ! Advecting velocity at quadrature points.
-       u_f_q = face_val_at_quad(U_nl, face)
-       u_f2_q = face_val_at_quad(U_nl, face_2)
+       select case(equation_type)
+       case(FIELD_EQUATION_ADVECTIONDIFFUSION)
+          u_f_q = face_val_at_quad(U_nl, face)
+          u_f2_q = face_val_at_quad(U_nl, face_2)
+       case(FIELD_EQUATION_INTERNALENERGY)
+          u_f_q = face_val_at_quad(U_nl, face)
+          u_f2_q = face_val_at_quad(U_nl, face_2)
+          do i=1,2
+             u_f_q(i,:)= u_f_q(i,:)*(beta* face_val_at_quad(energy_density,face) &
+               + (1.0-beta)*face_val_at_quad(old_energy_density,face))
+             u_f2_q(i,:)= u_f2_q(i,:)*(beta* face_val_at_quad(energy_density,face_2) &
+               + (1.0-beta)*face_val_at_quad(old_energy_density,face_2))
+          end do
+       end select
        U_nl_q=0.5*(u_f_q+u_f2_q)
 
        if(p0_vel) then
@@ -2431,8 +2560,14 @@ contains
           FLExit("Haven't worked out integration by parts twice for Lax-Friedrichs.")
        end if
        
-       u_face=face_global_nodes(U_nl, face)
-       u_face_2=face_global_nodes(U_nl, face_2)
+       select case(equation_type)
+       case(FIELD_EQUATION_ADVECTIONDIFFUSION)
+          u_face=face_global_nodes(U_nl, face)
+          u_face_2=face_global_nodes(U_nl, face_2)
+       case(FIELD_EQUATION_INTERNALENERGY)
+          u_face=face_global_nodes(U_nl, face)
+          u_face_2=face_global_nodes(U_nl, face_2)
+       end select
 
        C=0.0
        do i=1,size(u_face)

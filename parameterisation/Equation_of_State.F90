@@ -38,7 +38,8 @@ module equation_of_state
   
   private
   public :: calculate_perturbation_density, mcD_J_W_F2002, &
-            compressible_eos, compressible_material_eos
+            compressible_eos, compressible_material_eos, &
+            set_EOS_pressure_and_temperature
 
 contains
 
@@ -275,13 +276,13 @@ contains
     
   end subroutine mcD_J_W_F2002
   
-  subroutine compressible_eos(state, density, pressure,full_pressure,drhodp)
+  subroutine compressible_eos(state, density, pressure,full_pressure,drhodp,temperature)
 
     type(state_type), intent(inout) :: state
-    type(scalar_field), intent(inout), optional :: density, pressure, drhodp
-    type(scalar_field), intent(inout), optional :: full_pressure
+    type(scalar_field), intent(inout), optional :: density, drhodp
+    type(scalar_field), intent(inout), optional :: full_pressure, pressure, temperature
 
-    type(scalar_field), pointer :: hp
+    type(scalar_field), pointer :: hp, complete_pressure, lp
     integer :: stat
     
     character(len=OPTION_PATH_LEN) :: eos_path
@@ -325,9 +326,15 @@ contains
          
          ! standard stiffened gas eos
          
-         
-         call compressible_eos_stiffened_gas(state, eos_path, drhodp_local, &
-            density=density, pressure=pressure)
+         if (present(pressure))then
+            call compressible_eos_stiffened_gas(state, eos_path,&
+                 drhodp_local, &
+                 density=density, pressure=pressure)
+            else 
+               call compressible_eos_stiffened_gas(state, eos_path,&
+                 drhodp_local, &
+                 density=density, pressure=full_pressure)
+            end if
          
       else if(have_option(trim(eos_path)//'/compressible/giraldo2')) then
          
@@ -335,30 +342,44 @@ contains
         ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
         ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
         
-        call compressible_eos_giraldo(state, eos_path, drhodp_local, &
-            density=density, pressure=pressure,full_pressure=full_pressure)
+         if (has_scalar_field(state,hp_name)) then
+            hp=>extract_scalar_field(state,hp_name)
+            lp=>extract_scalar_field(state,"Pressure")
+            allocate(complete_pressure)
+            call allocate(complete_pressure,hp%mesh,"FullPressure")
+            call remap_field(lp,complete_pressure)
+            call addto(complete_pressure,hp)
+         else
+            complete_pressure=>extract_scalar_field(state,"Pressure")
+         end if
+         if (present(pressure))then
+            call compressible_eos_giraldo_mmat(state, eos_path, drhodp_local, &
+                 complete_pressure,density,pressure=pressure,temperature=temperature)
+         else
+            call compressible_eos_giraldo_mmat(state, eos_path, drhodp_local, &
+                 complete_pressure,density=density, pressure=full_pressure,temperature=temperature)
+         end if
 
+         if (has_scalar_field(state,hp_name)) then
+            call deallocate(complete_pressure)
+            deallocate(complete_pressure)
+         end if
 
       elseif(have_option(trim(eos_path)//'/compressible/foam')) then
         
         ! eos used in foam modelling
         
-        call compressible_eos_foam(state, eos_path, drhodp_local, &
-            density=density, pressure=pressure)
+         call compressible_eos_foam(state, eos_path, drhodp_local, &
+              density=density, pressure=pressure)
 
      end if
      
-!     if (present(pressure) .and. has_scalar_field(state, hp_name)) then
-!        ! Remove the hydrostatic contribution to pressure
-!         
-!        hp => extract_scalar_field(state, hp_name)
-!        
-!        ewrite(1,*), "subtracting hydrostatic pressure"
-!        call addto(pressure,hp,-1.0)
-!
-!     end if
+     if (present(pressure) .and. has_scalar_field(state, hp_name)) then
+        ! Remove the hydrostatic contribution from full pressure
 
-      
+        hp => extract_scalar_field(state, hp_name)
+        call subtract_hydrostatic_pressure_contribution(state,pressure,hp)
+     end if
   else
     
      ! I presume we dont' actually want to be here
@@ -510,20 +531,20 @@ contains
   end subroutine compressible_eos_stiffened_gas
   
   subroutine compressible_eos_giraldo(state, eos_path, drhodp, &
-    density, pressure,full_pressure)
+    complete_pressure,density, pressure)
     ! Eq. of state commonly used in atmospheric applications. See
     ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
     ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
     type(state_type), intent(inout) :: state
     character(len=*), intent(in):: eos_path
     type(scalar_field), intent(inout) :: drhodp
-    type(scalar_field), intent(inout), optional :: density
-    type(scalar_field), intent(inout), optional, target :: pressure, full_pressure
-      
+    type(scalar_field), intent(inout), optional :: density, pressure
+    type(scalar_field), intent(in) :: complete_pressure
+    
     ! locals
     integer :: stat, gstat, cstat, pstat, tstat
     type(scalar_field), pointer :: pressure_local, energy_local, density_local, &
-                                   & temperature_local,complete_pressure,hp, hp_local, opressure
+                                   & temperature_local
     type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
                           & temperature_remap
     real :: reference_density, p_0, c_p, c_v
@@ -532,9 +553,6 @@ contains
 !     type(scalar_field) :: pressure_remap, density_remap, temperature_remap
     logical :: incompressible
     integer :: node
-
-    character(len = *), parameter:: hp_name = "HydrostaticPressure"
-    character(len = *), parameter:: hpg_name = "HydrostaticPressureGradient"
     
     call get_option(trim(eos_path)//'/compressible/giraldo2/reference_pressure', &
                     p_0, default=1.0e5)
@@ -627,19 +645,6 @@ contains
             ! density = reference_density
             call set(density, reference_density)
           else
-            pressure_local=>extract_scalar_field(state,'Pressure',stat=stat)
-            allocate(complete_pressure)
-            call allocate(complete_pressure,pressure_local%mesh,"FullPressure")
-            call set(complete_pressure,pressure_local)
-
-            if (has_scalar_field(state,hp_name)) then
-               hp=>extract_scalar_field(state,hp_name)
-               ewrite_minmax(hp%val)
-               call addto(complete_pressure,hp)
-            end if
-            if (stat==0) then
-              assert(density%mesh==drhodp%mesh)
-              
               call allocate(pressure_remap, drhodp%mesh, "RemappedPressure")
               call remap_field(complete_pressure, pressure_remap)
 
@@ -652,26 +657,13 @@ contains
               call scale(density, drhodp)
               
               call deallocate(pressure_remap)
-              call deallocate(complete_pressure)
-              deallocate(complete_pressure)
-            else
-              FLExit('No Pressure in material_phase::'//trim(state%name))
-            end if
-          end if
-       end if
+           end if
+        end if
 
-       if(present(pressure) .or. present(full_pressure)) then
-          if (present(pressure)) then
-              opressure=>pressure
-          else if (present(full_pressure)) then
-             opressure=>full_pressure
-              ewrite(1,*) "Calculating full pressure"
-          else
-             FLAbort(" don't ask me!")
-          end if
+       if(present(pressure)) then
           if(incompressible) then
             ! pressure is unrelated to density in this case
-            call zero(opressure)
+            call zero(pressure)
           else
             ! calculate the pressure using the eos and the calculated (probably prognostic)
             ! density
@@ -679,33 +671,14 @@ contains
             density_local=>extract_scalar_field(state,'Density',stat=stat)
 
             if (stat==0) then
-              assert(opressure%mesh==drhodp%mesh)
+              assert(pressure%mesh==drhodp%mesh)
               
               call allocate(density_remap, drhodp%mesh, "RemappedDensity")
               call remap_field(density_local, density_remap)
               
-              call set(opressure, drhodp)
-              call invert(opressure)
-              
-!              if (has_scalar_field(state,hp_name)) then
-!                 hp => extract_scalar_field(state,hp_name)
-!                 allocate(hp_local)
-!                 call allocate(hp_local,hp%mesh)
-!                 call set(hp_local,hp)
-!                 call scale(hp_local,drhodp)
-!                 call addto(density_remap,hp_local,-1.0)
-!                 call deallocate(hp_local)
-!                 deallocate(hp_local)
-!              end if
-
-              call scale(opressure, density_remap)
-
-              if (present(pressure)) then
-                 if (has_scalar_field(state,hp_name)) then
-                    hp => extract_scalar_field(state,hp_name)
-                    call addto(opressure,hp,scale=-1.0)
-                 end if
-              end if
+              call set(pressure, drhodp)
+              call invert(pressure)
+              call scale(pressure, density_remap)
 
               call deallocate(density_remap)
             else
@@ -718,6 +691,268 @@ contains
 
   end subroutine compressible_eos_giraldo
 
+subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
+      type(scalar_field), intent(inout) :: bulk
+      type(scalar_field), intent(in) :: q(:)
+      type(scalar_field), intent(in), optional ::q_not(:)
+      real, intent(in) :: b_val
+      real, intent(in) :: q_val(size(q))
+      type(scalar_field) :: denom
+
+      integer :: i
+
+
+      ! Warning, this routine is a temporary hack to get bulk quantities
+      
+      call allocate(denom,bulk%mesh,"ScaleFactor")
+      call set(denom,1.0)
+      do i=1,size(q_not)
+         call addto(bulk,q_not(i),scale=-1.0)
+      end do
+      call invert(denom)
+      
+      call set(bulk,b_val)
+      do i=1,size(q)
+         call addto(bulk,q(i),scale=q_val(i)-b_val)
+      end do
+      call scale(bulk,denom)
+
+      call deallocate(denom)
+    end subroutine make_bulk_quantities
+
+  subroutine compressible_eos_giraldo_mmat(state, eos_path, drhodp, &
+    complete_pressure,density, pressure,temperature)
+    ! Eq. of state commonly used in atmospheric applications. See
+    ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
+    ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
+    type(state_type), intent(inout) :: state
+    character(len=*), intent(in):: eos_path
+    type(scalar_field), intent(inout) :: drhodp
+    type(scalar_field), intent(inout), optional :: density, pressure,&
+         temperature
+    type(scalar_field), intent(in) :: complete_pressure
+    
+    ! locals
+    integer :: stat, gstat, cstat, pstat, tstat
+    type(scalar_field), pointer :: pressure_local, energy_local,&
+         & density_local, &
+         & temperature_local, q_v,q_c,q_r
+    type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
+                          & temperature_remap, R_bulk,c_p_bulk,c_v_bulk,&
+                          q_g, incompfix
+    type(scalar_field), target :: dummyscalar
+    real :: reference_density, p_0, c_p, c_v
+    real :: drhodp_node, power, temperature_node, density_node,&
+         pressure_node, energy_node,&
+         c_v_node, R_node, q_node, d_node
+    real :: R, c_p_water, c_v_water, R_water, rho_w
+    logical :: incompressible
+    integer :: node
+
+    character(len = *), parameter:: hp_name = "HydrostaticPressure"
+    character(len = *), parameter:: hpg_name = "HydrostaticPressureGradient"
+    
+    call get_option(trim(eos_path)//'/compressible/giraldo2/reference_pressure', &
+                    p_0, default=1.0e5)
+        
+    call get_option(trim(eos_path)//'/compressible/giraldo2/C_P', &
+                    c_p, stat=gstat)
+    if(gstat/=0) then
+       c_p=1000.0
+    end if
+        
+    call get_option(trim(eos_path)//'/compressible/giraldo2/C_V', &
+                    c_v, stat=cstat)
+    if(cstat/=0) then
+       c_v=714.285714
+    end if
+
+    R=c_p-c_v
+
+    c_p_water=1840
+    c_v_water=1840-461.5
+    R_water=c_p_water-c_v_water
+    rho_w=1000.0
+
+
+!    q_c=>extract_scalar_field(state,"CloudWaterFraction")
+!    q_r=>extract_scalar_field(state,"RainwaterFraction")
+
+    call allocate(dummyscalar,drhodp%mesh,"dummy")
+    call zero(dummyscalar)
+
+    call allocate(R_bulk,drhodp%mesh,"BulkR")
+    call allocate(c_v_bulk,drhodp%mesh,"Bulkc_v")
+
+    if (has_scalar_field(state,"WaterVapourFraction")) then
+       q_v=>extract_scalar_field(state,"WaterVapourFraction")
+    else
+       q_v=>dummyscalar
+    end if
+
+    if (has_scalar_field(state,"CloudWaterFraction")) then
+       q_c=>extract_scalar_field(state,"CloudWaterFraction")
+    else
+       q_c=>dummyscalar
+    end if
+
+    if (has_scalar_field(state,"RainwaterFraction")) then
+       q_r=>extract_scalar_field(state,"RainwaterFraction")
+    else
+       q_r=>dummyscalar
+    end if
+
+
+    call make_bulk_quantities(R_bulk,R,(/q_v,q_r,q_c/),&
+         (/R_water,0.0,0.0/),(/q_r,q_c/))
+    call make_bulk_quantities(c_v_bulk,c_v,(/q_v,q_c,q_r/),&
+         (/c_v_water,4100.0,4100.0/))
+
+    call allocate(q_g,drhodp%mesh,"GasFraction")
+    call allocate(incompfix,drhodp%mesh,"IncompressibleScaleFactor2")
+
+    call set (q_g,1.0)
+    call addto(q_g,q_c,scale=-1.0)
+    call addto(q_g,q_r,scale=-1.0)
+
+    density_local=>extract_scalar_field(state,"Density")
+    call zero(incompfix)
+    call addto(incompfix,q_c,scale=-1.0/rho_w)
+    call addto(incompfix,q_r,scale=-1.0/rho_w)
+    call scale(incompfix,density_local)
+    call addto(incompfix,1.0)
+
+        
+    incompressible = ((gstat/=0).or.(cstat/=0))
+    if(incompressible) then
+       ewrite(0,*) "Selected compressible eos but not specified either C_P or C_V."
+    end if
+        
+    call zero(drhodp)
+    
+    if(.not.incompressible) then
+       energy_local=>extract_scalar_field(state,'InternalEnergy',stat=stat)
+       
+       if((gstat==0).and.(cstat==0)) then
+          
+          call allocate(energy_remap, drhodp%mesh, 'RemappedInternalEnergy')
+          call remap_field(energy_local, energy_remap)
+          
+          do node=1,node_count(drhodp)
+             ! Evil node computation goes here
+             temperature_node=node_val(energy_remap,node)/node_val(c_v_bulk,node)
+             drhodp_node=node_val(q_g,node)&
+                  *(node_val(R_bulk,node)&
+                  *temperature_node)
+             
+             call set(drhodp, node, drhodp_node)
+             if (present(temperature)) &
+                  & call set(temperature, node, temperature_node)
+          end do
+       end if
+       call invert(drhodp)
+       call scale(drhodp,incompfix)
+       
+    end if
+    
+    if(present(density)) then
+       ! calculate the density
+       ! density may equal density in state depending on how this
+       ! subroutine is called
+       if(incompressible) then
+          ! density = reference_density
+          call set(density, reference_density)
+       else
+
+          call allocate(pressure_remap, drhodp%mesh, "RemappedPressure")
+          call remap_field(complete_pressure, pressure_remap)
+!          call set(density, pressure_remap)
+!          call scale(density, drhodp)
+
+
+!          do node=1,node_count(drhodp)
+             ! Evil node computation goes here
+!             pressure_node=node_val(pressure_remap,node)
+!             energy_node=node_val(energy_remap,node)
+!             c_v_node=node_val(c_v_bulk,node)
+!             R_node=node_val(R_bulk,node)
+!             density_node=c_v_node*pressure_node/&
+!                  (R_node*energy_node)
+             
+!             call set(density, node, density_node)
+!          end do
+          call set(density,energy_remap)
+          call scale(density,R_bulk)
+          call invert(density)
+          call scale(density,c_v_bulk)
+          call scale(density,pressure_remap)
+          
+          call zero(incompfix)
+          call addto(incompfix,q_r,scale=1.0/rho_w)
+          call addto(incompfix,q_c,scale=1.0/rho_w)
+          call scale(incompfix,density)
+          call addto(incompfix,q_g)
+          call invert(incompfix)
+          call scale(density,incompfix)
+          
+          call deallocate(pressure_remap)
+       end if
+    end if
+    
+    if(present(pressure)) then
+       if(incompressible) then
+          ! pressure is unrelated to density in this case
+          call zero(pressure)
+       else
+          ! calculate the pressure using the eos and the calculated (probably prognostic)
+          ! density
+          
+          density_local=>extract_scalar_field(state,'Density',stat=stat)
+          
+          if (stat==0) then
+             assert(pressure%mesh==drhodp%mesh)
+             
+             call allocate(density_remap, drhodp%mesh, "RemappedDensity")
+             call remap_field(density_local, density_remap)
+             
+
+             do node=1,node_count(drhodp)
+                ! Evil node computation goes here
+                energy_node=node_val(energy_remap,node)
+                c_v_node=node_val(c_v_bulk,node)
+                R_node=node_val(R_bulk,node)
+                q_node=node_val(q_g,node)
+                density_node=node_val(density_remap,node)
+                d_node=node_val(incompfix,node)
+
+                pressure_node=density_node*R_node*energy_node*q_node&
+                     &/(c_v_node*d_node)
+!                pressure_node=density_node*R_node*energy_node&
+!                                     &/(c_v_node)
+
+                call set(pressure, node, pressure_node)
+             end do
+
+!             call set(pressure, drhodp)
+!             call invert(pressure)
+!             call scale(pressure, density_remap)
+             
+             call deallocate(density_remap)
+          else
+             FLExit('No Density in material_phase::'//trim(state%name))
+          end if
+       end if
+    end if
+    
+    call deallocate(R_bulk)
+    call deallocate(c_v_bulk)
+    call deallocate(q_g)
+    call deallocate(incompfix)
+    if(.not.incompressible) call deallocate(energy_remap)
+    call deallocate(dummyscalar)
+    
+  end subroutine compressible_eos_giraldo_mmat
+  
   subroutine compressible_eos_foam(state, eos_path, drhodp, &
     density, pressure)
     ! Foam EoS Used with compressible simulations of liquid drainage in foams.
@@ -788,6 +1023,7 @@ contains
       end if
     end if
         
+
   end subroutine compressible_eos_foam
         
   subroutine compressible_material_eos(state,materialdensity,&
@@ -899,5 +1135,71 @@ contains
     call deallocate(drhodp)
 
   end subroutine compressible_material_eos
-  
+
+  subroutine subtract_hydrostatic_pressure_contribution(state,pressure,hp)
+    type(state_type), intent(inout) :: state
+    type(scalar_field), intent(inout) :: pressure
+    type(scalar_field), intent(in) :: hp
+
+    type(scalar_field) :: rhs
+
+    integer :: ele
+
+    if ((continuity(pressure)<= continuity(hp)) .and. &
+        (element_degree(pressure,1) >= element_degree(hp,1))) then
+
+       ! No reason to make life difficult unnecessarily
+       call addto(pressure,hp,scale=-1.0)
+    else
+       
+       call allocate(rhs,pressure%mesh,"PerturbationPressureRHS")
+
+       element_loop: do ele=1,ele_count(pressure)
+          call assemble_perturbation_pressure_rhs(ele,pressure,hp,rhs)
+       end do element_loop
+
+!       call petsc_solve(pressure,get_mass_matrix(state,pressure%mesh),rhs,state)
+
+       call deallocate(rhs)
+    end if
+
+  end subroutine subtract_hydrostatic_pressure_contribution
+          
+  subroutine assemble_perturbation_pressure_rhs(ele,pressure,hp,rhs)
+    integer, intent(in) :: ele
+    type(scalar_field), intent(in) :: pressure,hp
+    type(scalar_field),intent(inout) :: rhs
+
+    
+
+  end subroutine assemble_perturbation_pressure_rhs
+
+  subroutine set_EOS_pressure_and_temperature(state)
+    type(state_type), intent(inout) :: state
+    type(scalar_field), pointer :: temperature, pressure, density
+
+    ! Here there will be magic done to put the Equation of state pressure
+    ! and insitu bulk Temperature on the density mesh in the input state
+
+    if (has_scalar_field(state,"EOSPressure")) then
+       pressure=>extract_scalar_field(state,"EOSPressure")
+    else
+       density=>extract_scalar_field(state,"Density")
+       allocate(pressure)
+       call allocate(pressure,density%mesh,"EOSPressure")
+       call insert(state,pressure,"EOSPressure")
+    end if
+    if (has_scalar_field(state,"InsituTemperature")) then
+       temperature=>extract_scalar_field(state,"InsituTemperature")
+    else
+       density=>extract_scalar_field(state,"InsituTemperature ")
+       allocate(temperature)
+       call allocate(temperature,density%mesh,"InsituTemperature ")
+       call insert(state,temperature,"InsituTemperature "             )
+    end if
+
+    call compressible_eos(state,full_pressure=pressure,temperature=temperature)
+
+  end subroutine set_EOS_pressure_and_temperature
+
 end module equation_of_state

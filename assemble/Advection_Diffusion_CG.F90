@@ -518,7 +518,8 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
-    call deallocate(complete_pressure)
+    if (equation_type .eq. FIELD_EQUATION_INTERNALENERGY) &
+         call deallocate(complete_pressure)
     
 
     

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <fluidity_options>
   <simulation_name>
-    <string_value lines="1">solved_hydrostatic_warm_bubble-adaptive</string_value>
+    <string_value lines="1">prescribed_hydrostatic_warm_bubble-adaptive</string_value>
   </simulation_name>
   <problem_type>
     <string_value lines="1">fluids</string_value>
@@ -29,19 +29,6 @@
     <mesh name="PressureMesh">
       <from_mesh>
         <mesh name="CoordinateMesh"/>
-        <stat>
-          <exclude_from_stat/>
-        </stat>
-      </from_mesh>
-    </mesh>
-    <mesh name="HydrostaticPressureMesh">
-      <from_mesh>
-        <mesh name="PressureMesh"/>
-        <mesh_shape>
-          <polynomial_degree>
-            <integer_value rank="0">2</integer_value>
-          </polynomial_degree>
-        </mesh_shape>
         <stat>
           <exclude_from_stat/>
         </stat>
@@ -629,52 +616,30 @@ for n in range(field.node_count):
       </diagnostic>
     </scalar_field>
     <scalar_field name="HydrostaticPressure" rank="0">
-      <prognostic>
-        <mesh name="HydrostaticPressureMesh"/>
-        <spatial_discretisation>
-          <continuous_galerkin>
-            <stabilisation>
-              <streamline_upwind>
-                <nu_bar_optimal/>
-                <nu_scale name="0.5">
-                  <real_value shape="1" rank="0">0.5</real_value>
-                </nu_scale>
-              </streamline_upwind>
-            </stabilisation>
-          </continuous_galerkin>
-        </spatial_discretisation>
-        <solver>
-          <iterative_method name="gmres">
-            <restart>
-              <integer_value rank="0">30</integer_value>
-            </restart>
-          </iterative_method>
-          <preconditioner name="sor"/>
-          <relative_error>
-            <real_value rank="0">1e-7</real_value>
-          </relative_error>
-          <max_iterations>
-            <integer_value rank="0">1000</integer_value>
-          </max_iterations>
-          <never_ignore_solver_failures/>
-          <diagnostics>
-            <monitors/>
-          </diagnostics>
-        </solver>
-        <exclude_from_checkpointing/>
+      <prescribed>
+        <mesh name="PressureMesh"/>
+        <value name="WholeMesh">
+          <python>
+            <string_value lines="20" type="python">def val(X, t):
+  from math import exp, sqrt, sin, cos, pi
+  p0=1.0e5
+  cp=1000.0
+  cv=714.285714
+  R=cp-cv
+  theta0=300.0
+  g=9.81
+  expres=1-g*X[1]/(theta0*cp)
+  
+  pressure=p0*expres**(cp/R)
+  return pressure</string_value>
+          </python>
+        </value>
         <output/>
         <stat/>
-        <convergence>
-          <include_in_convergence/>
-        </convergence>
         <detectors>
-          <include_in_detectors/>
+          <exclude_from_detectors/>
         </detectors>
-        <steady_state>
-          <include_in_steady_state/>
-        </steady_state>
-        <consistent_interpolation/>
-      </prognostic>
+      </prescribed>
     </scalar_field>
     <scalar_field name="fullPressure" rank="0">
       <diagnostic>
@@ -737,7 +702,7 @@ for n in range(field.node_count):
 for n in range(field.node_count):
   field.set(n,p_pert[n])</string_value>
         </algorithm>
-        <mesh name="HydrostaticPressureMesh"/>
+        <mesh name="VelocityMesh"/>
         <output/>
         <stat/>
         <convergence>
@@ -752,75 +717,4 @@ for n in range(field.node_count):
       </diagnostic>
     </scalar_field>
   </material_phase>
-  <mesh_adaptivity>
-    <hr_adaptivity>
-      <period>
-        <real_value rank="0">20.0</real_value>
-      </period>
-      <maximum_number_of_nodes>
-        <integer_value rank="0">1000000</integer_value>
-      </maximum_number_of_nodes>
-      <enable_gradation>
-        <gradation_parameter>
-          <real_value rank="0">1.75</real_value>
-        </gradation_parameter>
-      </enable_gradation>
-      <metric_advection>
-        <spatial_discretisation>
-          <control_volumes>
-            <face_value name="FirstOrderUpwind"/>
-          </control_volumes>
-          <conservative_advection>
-            <real_value rank="0">1.0</real_value>
-          </conservative_advection>
-        </spatial_discretisation>
-        <temporal_discretisation>
-          <theta>
-            <real_value rank="0">1.0</real_value>
-          </theta>
-          <maximum_courant_number_per_subcycle>
-            <real_value rank="0">0.25</real_value>
-            <courant_number name="ControlVolumeCFLNumber"/>
-          </maximum_courant_number_per_subcycle>
-          <scale_advection_time>
-            <real_value rank="0">1.1</real_value>
-          </scale_advection_time>
-          <control_volumes/>
-        </temporal_discretisation>
-        <solver>
-          <iterative_method name="gmres">
-            <restart>
-              <integer_value rank="0">30</integer_value>
-            </restart>
-          </iterative_method>
-          <preconditioner name="sor"/>
-          <relative_error>
-            <real_value rank="0">1.e-5</real_value>
-          </relative_error>
-          <max_iterations>
-            <integer_value rank="0">1000</integer_value>
-          </max_iterations>
-          <never_ignore_solver_failures/>
-          <diagnostics>
-            <monitors/>
-          </diagnostics>
-        </solver>
-        <output/>
-      </metric_advection>
-      <tensor_field name="MinimumEdgeLengths">
-        <anisotropic_symmetric>
-          <constant>
-            <real_value symmetric="true" dim2="dim" shape="2 2" dim1="dim" rank="2">5.0 5.0 5.0 5.0</real_value>
-          </constant>
-        </anisotropic_symmetric>
-      </tensor_field>
-      <tensor_field name="MaximumEdgeLengths">
-        <anisotropic_symmetric>
-          <constant>
-            <real_value symmetric="true" dim2="dim" shape="2 2" dim1="dim" rank="2">100.0 0.0 0.0 100.0</real_value>
-          </constant>
-        </anisotropic_symmetric>
-      </tensor_field>
-    </hr_adaptivity>
-  </mesh_adaptivity>
 </fluidity_options>
