@@ -25,6 +25,9 @@ class Field:
   def __repr__(self):
     return '(%s) %s' % (self.description,self.name)
 
+  def __len__(self):
+    return self.node_count
+
   def set_mesh(self,mesh):
     self.mesh = mesh
     self.element_count = self.mesh.element_count
@@ -65,6 +68,8 @@ class Field:
       field.'''
       
       try:
+          if type(node)==slice:
+            raise TypeError
           for ii,vv in zip(node,val):
               self.val[ii]=vv
       except TypeError:
@@ -74,14 +79,21 @@ class Field:
     self.set(node, val)
      
   def node_val(self,node):
+    if node > self.node_count:
+      raise IndexError
+    return self.val[node]
+
+  def node_vals(self,node):
     return self.val[node]
 
   def __getitem__(self, node):
-    if node != int(node):
+
+    type_dict={int:self.node_val,
+               slice:self.node_vals,}
+
+    if type(node) not in type_dict:
       raise TypeError
-    if node > self.node_count:
-      raise IndexError
-    return self.node_val(node)
+    return type_dict[type(node)](node)
 
   def ele_val(self,ele_number):
     # Return the values of field at the nodes of ele_number

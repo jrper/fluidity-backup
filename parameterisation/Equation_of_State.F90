@@ -691,33 +691,33 @@ contains
 
   end subroutine compressible_eos_giraldo
 
-subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
+subroutine make_bulk_quantities(bulk,q,q_val,denom)
       type(scalar_field), intent(inout) :: bulk
       type(scalar_field), intent(in) :: q(:)
-      type(scalar_field), intent(in), optional ::q_not(:)
-      real, intent(in) :: b_val
+      type(scalar_field), intent(inout), optional :: denom
       real, intent(in) :: q_val(size(q))
-      type(scalar_field) :: denom
+      type(scalar_field) :: fac
 
       integer :: i
 
-
       ! Warning, this routine is a temporary hack to get bulk quantities
       
-      call allocate(denom,bulk%mesh,"ScaleFactor")
-      call set(denom,1.0)
-      do i=1,size(q_not)
-         call addto(bulk,q_not(i),scale=-1.0)
-      end do
-      call invert(denom)
-      
-      call set(bulk,b_val)
-      do i=1,size(q)
-         call addto(bulk,q(i),scale=q_val(i)-b_val)
-      end do
-      call scale(bulk,denom)
 
-      call deallocate(denom)
+
+      call zero(bulk)
+      do i=1,size(q)
+         call addto(bulk,q(i),scale=q_val(i))
+      end do
+
+      if (present(denom)) then
+         call allocate(fac,denom%mesh,"scale_factor")
+         call set(fac,denom)
+         call invert(fac)
+         call scale(bulk,fac)
+         call deallocate(fac)
+      end if
+
+
     end subroutine make_bulk_quantities
 
   subroutine compressible_eos_giraldo_mmat(state, eos_path, drhodp, &
@@ -739,12 +739,12 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
          & temperature_local, q_v,q_c,q_r
     type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
                           & temperature_remap, R_bulk,c_p_bulk,c_v_bulk,&
-                          q_g, incompfix
+                          q_g, incompfix, temp_local
     type(scalar_field), target :: dummyscalar
     real :: reference_density, p_0, c_p, c_v
     real :: drhodp_node, power, temperature_node, density_node,&
          pressure_node, energy_node,&
-         c_v_node, R_node, q_node, d_node
+         c_v_node, R_node, q_node, d_node, i_node
     real :: R, c_p_water, c_v_water, R_water, rho_w
     logical :: incompressible
     integer :: node
@@ -796,26 +796,32 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
        q_c=>dummyscalar
     end if
 
-    if (has_scalar_field(state,"RainwaterFraction")) then
-       q_r=>extract_scalar_field(state,"RainwaterFraction")
+    if (has_scalar_field(state,"RainWaterFraction")) then
+       q_r=>extract_scalar_field(state,"RainWaterFraction")
     else
        q_r=>dummyscalar
     end if
 
+    if (present(temperature)) then
+       call allocate(temp_local,q_r%mesh,"Temperature")
+    end if
 
-    call make_bulk_quantities(R_bulk,R,(/q_v,q_r,q_c/),&
-         (/R_water,0.0,0.0/),(/q_r,q_c/))
-    call make_bulk_quantities(c_v_bulk,c_v,(/q_v,q_c,q_r/),&
-         (/c_v_water,4100.0,4100.0/))
-
-    call allocate(q_g,drhodp%mesh,"GasFraction")
+    call allocate(q_g,drhodp%mesh,"GasMassFraction")
     call allocate(incompfix,drhodp%mesh,"IncompressibleScaleFactor2")
 
     call set (q_g,1.0)
+    call addto(q_g,q_v,scale=-1.0)
     call addto(q_g,q_c,scale=-1.0)
     call addto(q_g,q_r,scale=-1.0)
 
-    density_local=>extract_scalar_field(state,"Density")
+
+    call make_bulk_quantities(R_bulk,(/q_g,q_v/),&
+         (/R,R_water/))
+    call make_bulk_quantities(c_v_bulk,(/q_g,q_v,q_c,q_r/),&
+         (/c_v,c_v_water,4100.0,4100.0/))
+
+    density_local=>extract_scalar_field(state,"Density",stat=cstat)
+
     call zero(incompfix)
     call addto(incompfix,q_c,scale=-1.0/rho_w)
     call addto(incompfix,q_r,scale=-1.0/rho_w)
@@ -840,21 +846,24 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
           
           do node=1,node_count(drhodp)
              ! Evil node computation goes here
-             temperature_node=node_val(energy_remap,node)/node_val(c_v_bulk,node)
-             drhodp_node=node_val(q_g,node)&
-                  *(node_val(R_bulk,node)&
-                  *temperature_node)
+             temperature_node=node_val(energy_remap,node)&
+                  /node_val(c_v_bulk,node)
+             drhodp_node=node_val(R_bulk,node)&
+                  *temperature_node
              
              call set(drhodp, node, drhodp_node)
              if (present(temperature)) &
-                  & call set(temperature, node, temperature_node)
+                  & call set(temp_local, node, temperature_node)
+             ! horrible temporary hack
           end do
+          call invert(drhodp)
+          call scale(drhodp,incompfix)
+          call scale(drhodp,incompfix)
        end if
-       call invert(drhodp)
-       call scale(drhodp,incompfix)
+       
        
     end if
-    
+
     if(present(density)) then
        ! calculate the density
        ! density may equal density in state depending on how this
@@ -870,30 +879,33 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
 !          call scale(density, drhodp)
 
 
-!          do node=1,node_count(drhodp)
+          do node=1,node_count(drhodp)
              ! Evil node computation goes here
-!             pressure_node=node_val(pressure_remap,node)
-!             energy_node=node_val(energy_remap,node)
-!             c_v_node=node_val(c_v_bulk,node)
-!             R_node=node_val(R_bulk,node)
-!             density_node=c_v_node*pressure_node/&
-!                  (R_node*energy_node)
+             pressure_node=node_val(pressure_remap,node)
+             temperature_node=node_val(energy_remap,node)&
+                  /node_val(c_v_bulk,node)
+             R_node=node_val(R_bulk,node)
+
+             i_node=(node_val(q_r,node)+node_val(q_c,node))/rho_w
+
+             density_node=pressure_node/&
+                  (R_node*temperature_node+pressure_node*i_node)
              
-!             call set(density, node, density_node)
-!          end do
-          call set(density,energy_remap)
-          call scale(density,R_bulk)
-          call invert(density)
-          call scale(density,c_v_bulk)
-          call scale(density,pressure_remap)
+             call set(density, node, density_node)
+          end do
+!          call set(density,energy_remap)
+!          call scale(density,R_bulk)
+!          call invert(density)
+!          call scale(density,c_v_bulk)
+!          call scale(density,pressure_remap)
           
-          call zero(incompfix)
-          call addto(incompfix,q_r,scale=1.0/rho_w)
-          call addto(incompfix,q_c,scale=1.0/rho_w)
-          call scale(incompfix,density)
-          call addto(incompfix,q_g)
-          call invert(incompfix)
-          call scale(density,incompfix)
+!          call zero(incompfix)
+!          call addto(incompfix,q_r,scale=1.0/rho_w)
+!          call addto(incompfix,q_c,scale=1.0/rho_w)
+!          call scale(incompfix,density)
+!          call addto(incompfix,q_g)
+!          call invert(incompfix)
+!          call scale(density,incompfix)
           
           call deallocate(pressure_remap)
        end if
@@ -914,21 +926,18 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
              
              call allocate(density_remap, drhodp%mesh, "RemappedDensity")
              call remap_field(density_local, density_remap)
-             
+
 
              do node=1,node_count(drhodp)
                 ! Evil node computation goes here
-                energy_node=node_val(energy_remap,node)
-                c_v_node=node_val(c_v_bulk,node)
+                temperature_node=node_val(energy_remap,node)&
+                     /node_val(c_v_bulk,node)
                 R_node=node_val(R_bulk,node)
-                q_node=node_val(q_g,node)
+                i_node=(node_val(q_r,node)+node_val(q_c,node))/rho_w
                 density_node=node_val(density_remap,node)
-                d_node=node_val(incompfix,node)
 
-                pressure_node=density_node*R_node*energy_node*q_node&
-                     &/(c_v_node*d_node)
-!                pressure_node=density_node*R_node*energy_node&
-!                                     &/(c_v_node)
+                pressure_node=density_node*R_node*temperature_node&
+                     /(1.0-density_node*i_node)
 
                 call set(pressure, node, pressure_node)
              end do
@@ -950,6 +959,10 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
     call deallocate(incompfix)
     if(.not.incompressible) call deallocate(energy_remap)
     call deallocate(dummyscalar)
+    if (present(temperature)) then
+       call set(temperature,temp_local)
+       call deallocate(temp_local)
+    end if
     
   end subroutine compressible_eos_giraldo_mmat
   
@@ -1176,7 +1189,7 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
 
   subroutine set_EOS_pressure_and_temperature(state)
     type(state_type), intent(inout) :: state
-    type(scalar_field), pointer :: temperature, pressure, density
+    type(scalar_field), pointer :: temperature,nl_field, pressure, density
 
     ! Here there will be magic done to put the Equation of state pressure
     ! and insitu bulk Temperature on the density mesh in the input state
@@ -1184,21 +1197,34 @@ subroutine make_bulk_quantities(bulk,b_val,q,q_val,q_not)
     if (has_scalar_field(state,"EOSPressure")) then
        pressure=>extract_scalar_field(state,"EOSPressure")
     else
-       density=>extract_scalar_field(state,"Density")
-       allocate(pressure)
-       call allocate(pressure,density%mesh,"EOSPressure")
-       call insert(state,pressure,"EOSPressure")
+!       ensure
+!       FLAbort("No EOSPressure field in state!")
     end if
     if (has_scalar_field(state,"InsituTemperature")) then
        temperature=>extract_scalar_field(state,"InsituTemperature")
     else
-       density=>extract_scalar_field(state,"InsituTemperature ")
-       allocate(temperature)
-       call allocate(temperature,density%mesh,"InsituTemperature ")
-       call insert(state,temperature,"InsituTemperature "             )
+!       FLAbort("No Temperature field in state!")
     end if
 
     call compressible_eos(state,full_pressure=pressure,temperature=temperature)
+
+    contains 
+
+
+      subroutine ensure_field(state,name)
+        type(state_type) :: state
+        character(len=*) :: name
+        type(scalar_field) :: sfield1
+        type(scalar_field), pointer :: sfield2
+    
+        if (.not. has_scalar_field(state,name)) then
+           sfield2=>extract_scalar_field(state,"Density")
+           call allocate(sfield1,sfield2%mesh,trim(name))
+           call insert(state,sfield1,trim(sfield1%name))
+           call zero(sfield1)
+        endif
+
+      end subroutine ensure_field
 
   end subroutine set_EOS_pressure_and_temperature
 

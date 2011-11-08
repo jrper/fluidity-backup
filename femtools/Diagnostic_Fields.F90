@@ -82,7 +82,8 @@ module diagnostic_fields
 
   interface calculate_galerkin_projection
     module procedure calculate_galerkin_projection_scalar, calculate_galerkin_projection_vector, &
-                     calculate_galerkin_projection_tensor
+                     calculate_galerkin_projection_tensor, &
+                     calculate_galerkin_projection_scalar_from_scalar
   end interface
   
 
@@ -2606,6 +2607,128 @@ contains
       end if
 
    end subroutine calculate_max_bed_shear_stress
+
+   subroutine calculate_galerkin_projection_scalar_from_scalar(state, projected_field, field,lump_mass)
+     type(state_type), intent(in) :: state
+     type(scalar_field), intent(in) ::projected_field
+     type(scalar_field), intent(inout) :: field
+     logical, optional :: lump_mass
+       
+     character(len=len_trim(field%option_path)) :: path
+     character(len=FIELD_NAME_LEN) :: field_name
+     type(vector_field), pointer :: positions
+     type(csr_sparsity) :: mass_sparsity
+     type(csr_matrix) :: mass
+     type(scalar_field) :: rhs, mass_lumped, inverse_mass_lumped
+     logical :: dg
+     logical :: check_integrals
+     logical :: apply_bcs
+
+     integer :: ele
+
+     dg = (continuity(field) < 0)
+
+     check_integrals = .false.
+     apply_bcs = .true.
+
+     path = projected_field%option_path
+     positions => extract_vector_field(state, "Coordinate")
+
+     ! Assuming they're on the same quadrature
+     assert(ele_ngi(field, 1) == ele_ngi(projected_field, 1))
+
+     if (.not. dg .and. .not. present(lump_mass)) then
+       mass_sparsity = make_sparsity(field%mesh, field%mesh, name="MassMatrixSparsity")
+       call allocate(mass, mass_sparsity, name="MassMatrix")
+       call zero(mass)
+     else if (lump_mass) then
+       call allocate(mass_lumped, field%mesh, name="GalerkinProjectionMassLumped")
+       call zero(mass_lumped)
+     end if
+     
+     if (present(lump_mass) .or. .not. dg) then
+       call allocate(rhs, field%mesh, name="GalerkinProjectionRHS")
+       call zero(rhs)
+     end if
+
+     do ele=1,ele_count(field)
+       call assemble_galerkin_projection(field, projected_field, positions, &
+                                      &  mass, rhs, ele, dg)
+     end do
+
+     if (present(lump_mass)) then
+       call allocate(inverse_mass_lumped, field%mesh, &
+          name="GalerkinProjectionInverseMassLumped")
+       call invert(mass_lumped, inverse_mass_lumped)
+       call set(field, rhs)
+       call scale(field, inverse_mass_lumped)
+       call deallocate(mass_lumped)
+       call deallocate(inverse_mass_lumped)
+       call deallocate(rhs)
+     else if (.not. dg) then
+       call set_solver_options(field)
+       call petsc_solve(field, mass, rhs)
+       call deallocate(mass)
+       call deallocate(mass_sparsity)
+       call deallocate(rhs)
+     end if
+
+     contains
+     
+       subroutine assemble_galerkin_projection(field, projected_field, positions, mass, rhs, ele, dg)
+         type(scalar_field), intent(inout) :: field
+         type(scalar_field), intent(in) :: projected_field
+         type(vector_field), intent(in) :: positions
+         type(csr_matrix), intent(inout) :: mass
+         type(scalar_field), intent(inout) :: rhs
+         integer, intent(in) :: ele
+         logical, intent(in) :: dg
+
+         type(element_type), pointer :: field_shape, proj_field_shape
+
+         real, dimension(ele_loc(field, ele)) :: little_rhs
+         real, dimension(ele_loc(field, ele), ele_loc(field, ele)) :: little_mass
+         real, dimension(ele_loc(field, ele), ele_loc(projected_field, ele)) :: little_mba
+         real, dimension(ele_loc(field, ele), ele_loc(projected_field, ele)) :: little_mba_int
+         real, dimension(ele_ngi(field, ele)) :: detwei
+         real, dimension(ele_loc(projected_field, ele)) :: proj_field_val
+
+         integer :: i, j, k
+
+         field_shape => ele_shape(field, ele)
+         proj_field_shape => ele_shape(projected_field, ele)
+
+         call transform_to_physical(positions, ele, detwei=detwei)
+
+         little_mass = shape_shape(field_shape, field_shape, detwei)
+
+         ! And compute the product of the basis functions
+         little_mba = 0
+         do i=1,ele_ngi(field, ele)
+           forall(j=1:ele_loc(field, ele), k=1:ele_loc(projected_field, ele))
+             little_mba_int(j, k) = field_shape%n(j, i) * proj_field_shape%n(k, i)
+           end forall
+           little_mba = little_mba + little_mba_int * detwei(i)
+         end do
+
+         proj_field_val = ele_val(projected_field, ele)
+         little_rhs = matmul(little_mba, proj_field_val)
+         
+         if (present(lump_mass)) then
+           call addto(mass_lumped, ele_nodes(field, ele), &
+             sum(little_mass,2))
+           call addto(rhs, ele_nodes(field, ele), little_rhs)
+         else if (dg) then
+           call solve(little_mass, little_rhs)
+           call set(field, ele_nodes(field, ele), little_rhs)
+         else
+           call addto(mass, ele_nodes(field, ele), ele_nodes(field, ele), little_mass)
+           call addto(rhs, ele_nodes(field, ele), little_rhs)
+         end if
+         
+       end subroutine assemble_galerkin_projection
+
+     end subroutine calculate_galerkin_projection_scalar_from_scalar
 
    subroutine calculate_galerkin_projection_scalar(state, field)
      type(state_type), intent(in) :: state

@@ -4306,6 +4306,41 @@ is modified:
           <value>0</value>
         </attribute>
         <attribute name="name">
+          <value>GeostrophicPressureJRP</value>
+        </attribute>
+        <element name="prognostic">
+          <element name="mesh">
+            <a:documentation>The GeostrophicPressure mesh. Must be continuous.
+
+&lt;b&gt;WARNING: It is usual for this to be a higher degree
+mesh than the velocity mesh&lt;/b&gt;</a:documentation>
+            <attribute name="name">
+              <data type="string"/>
+            </attribute>
+            <ref name="comment"/>
+          </element>
+          <ref name="prognostic_geostrophic_pressure_field"/>
+        </element>
+      </element>
+      <element name="scalar_field">
+        <a:documentation>If enabled, decomposes Pressure by solving for the balanced part of 
+Pressure using a "geopressure" solver:
+
+  f = - grad p_gp + g
+
+By choosing an appropriate mesh (typically velocity mesh order + 1)
+for the balanced part of pressure, physical balance can be
+represented to a higher degree of accuracy.
+
+If buoyancy is included and HydrostaticPressure or
+HydrostaticPressureGradient are enabled, the "geopressure" solver
+is modified:
+
+  f = - grad p_gp + g - grad p_hp</a:documentation>
+        <attribute name="rank">
+          <value>0</value>
+        </attribute>
+        <attribute name="name">
           <value>GeostrophicPressure</value>
         </attribute>
         <element name="prognostic">
@@ -5223,6 +5258,48 @@ Adapting to this field is not recommended</a:documentation>
             <ref name="generic_aliased_field"/>
           </element>
         </choice>
+      </element>
+       <element name="scalar_field">
+        <a:documentation>Diagnostic Field necessary for the cloud microphysics algorithm</a:documentation>
+        <attribute name="rank">
+          <value>0</value>
+        </attribute>
+        <attribute name="name">
+          <value>EOSPressure</value>
+        </attribute>
+        <element name="diagnostic">
+          <ref name="internal_algorithm"/>
+          <ref name="velocity_mesh_choice"/>
+          <ref name="diagnostic_scalar_field"/>
+        </element>
+      </element>
+      <element name="scalar_field">
+        <a:documentation>Diagnostic Field necessary for the cloud microphysics algorithm</a:documentation>
+        <attribute name="rank">
+          <value>0</value>
+        </attribute>
+        <attribute name="name">
+          <value>InsituTemperature</value>
+        </attribute>
+        <element name="diagnostic">
+          <ref name="internal_algorithm"/>
+          <ref name="velocity_mesh_choice"/>
+          <ref name="diagnostic_scalar_field"/>
+        </element>
+      </element>
+       <element name="scalar_field">
+        <a:documentation>Diagnostic Field necessary for the cloud microphysics algorithm</a:documentation>
+        <attribute name="rank">
+          <value>0</value>
+        </attribute>
+        <attribute name="name">
+          <value>GasDensity</value>
+        </attribute>
+        <element name="diagnostic">
+          <ref name="internal_algorithm"/>
+          <ref name="velocity_mesh_choice"/>
+          <ref name="diagnostic_scalar_field"/>
+        </element>
       </element>
       <element name="scalar_field">
         <a:documentation>This scalar field is meant to replace DENTRAF.
