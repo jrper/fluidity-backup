@@ -746,27 +746,6 @@ Stiffened Gas EoS</a:documentation>
                         </element>
                       </optional>
                     </element>
-                    <element name="giraldo">
-                      <a:documentation>Giraldo et. al. 2008, J. Comp. Phys.
-
-Used with compressible simulations</a:documentation>
-                      <element name="reference_pressure">
-                        <a:documentation>reference pressure
-
-The pressure at which potential temperature
-equals actual temperature. Normally taken to
-be the surface pressure, 1.0e05.</a:documentation>
-                        <ref name="real"/>
-                      </element>
-                      <element name="C_P">
-                        <a:documentation>Heat capacity at constant pressure</a:documentation>
-                        <ref name="real"/>
-                      </element>
-                      <element name="C_V">
-                        <a:documentation>Heat capacity at constant volume</a:documentation>
-                        <ref name="real"/>
-                      </element>
-                    </element>
                     <element name="giraldo2">
                       <a:documentation>Giraldo et. al. 2008, J. Comp. Phys.
 
@@ -787,10 +766,45 @@ be the surface pressure, 1.0e05.</a:documentation>
                         <a:documentation>Heat capacity at constant volume</a:documentation>
                         <ref name="real"/>
                       </element>
-                      <element name="reference_height">
+                    </element>
+		    <element name="ATHAM">
+                      <a:documentation>ATHAM single pressure single temperature multimaterial formulation.
+
+Used with compressible simulations</a:documentation>
+                <optional>
+                      <element name="reference_pressure">
+                        <a:documentation>reference pressure
+
+The pressure at which potential temperature
+equals actual temperature. Normally taken to
+be the surface pressure, 1.0e05.</a:documentation>
+                        <ref name="real"/>
+                      </element>
+		</optional>
+                      <element name="C_P">
+                        <a:documentation>Heat capacity at constant pressure</a:documentation>
+                        <ref name="real"/>
+                      </element>
+                      <element name="C_V">
                         <a:documentation>Heat capacity at constant volume</a:documentation>
                         <ref name="real"/>
                       </element>
+		      <optional>
+			<element name="density">
+			  <a:documentation> fixed density
+
+Fixed density of material. Set this ONLY for incompressible phase materials in ATHAM simulations.</a:documentation>
+                          <ref name="real"/>
+			</element>
+		      </optional>
+		      <optional>
+			<element name="radius">
+			  <a:documentation> fixed density
+
+Fixed radius of particulate material. Set this ONLY for incompressible phase materials in ATHAM simulations.</a:documentation>
+                          <ref name="real"/>
+			</element>
+		      </optional>
                     </element>
                     <element name="foam">
                       <a:documentation>Foam EoS
@@ -2315,6 +2329,9 @@ while a factor of 1 represents a connected domain.</a:documentation>
       </optional>
       <optional>
         <ref name="biology"/>
+      </optional>
+      <optional>
+        <ref name="microphysics"/>
       </optional>
       <optional>
         <ref name="forcing"/>
@@ -4306,7 +4323,7 @@ is modified:
           <value>0</value>
         </attribute>
         <attribute name="name">
-          <value>GeostrophicPressureJRP</value>
+          <value>HPJRP</value>
         </attribute>
         <element name="prognostic">
           <element name="mesh">
@@ -8423,6 +8440,22 @@ This method requires the inversion of a projection matrix.</a:documentation>
 
 This means the interpolation will not be conservative from the previous mesh so be careful what you're trying to achieve!</a:documentation>
       <empty/>
+    </element>
+  </define>
+  <define name="microphysics">
+    <element name="cloud_microphysics">
+      <optional>
+	<element name="microphysical_model">
+	  <a:documentation>Python function which implements cloud microphysics model.
+
+Default option is to use
+
+import fluidity.cloud_microphysics as cm
+cm.testing(states,dt)
+	  </a:documentation>
+	  <ref name="python_code"/>
+	</element>
+      </optional>
     </element>
   </define>
 </grammar>

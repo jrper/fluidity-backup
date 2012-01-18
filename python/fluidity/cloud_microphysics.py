@@ -1,13 +1,29 @@
-#default_physical_parameters={'m':0.018}
 import numpy as np
 import fluidity_tools
+import __builtin__
+
+import warnings,sys
+
+def myWarning(*args):
+    ewrite(3,warnings.formatwarning(*args))
+warnings.showwarning=myWarning
+
+
+if 'current_debug_level' not in __builtin__.__dict__:
+    __builtin__.current_debug_level=0
+
+def ewrite(priority_level,output):
+    if priority_level<=current_debug_level:
+        print output
 
 class microphysics_forcing(dict):
     
-    def __init__(self,forcing,args,bounds=()):
+    def __init__(self,forcing,args,bounds=(),alpha=0.0,name=''):
         dict.__init__(self)
         self.forcing=forcing
         self.bounds=bounds
+        self.alpha=alpha
+        self.name=name
         for arg in args:
             try:
                 self[arg[0]]=arg[1]
@@ -22,44 +38,83 @@ class microphysics_forcing(dict):
         else:
             return f
 
+class slip_velocity(object):
+    
+    def _scale(self,**kwargs):
+        return 1.0
+
+    def __init__(self,field,function,scale=None):
+        self.field=field
+        self.function=function
+        if scale==None:
+            self.scale=self._scale
+        else:
+            self.scale=scale
+
+    def __call__(self,kwargs):
+        return self.function(kwargs,**kwargs)*self.scale(**kwargs)
+
+
+
 class microphysics_model(object):
 
     """ An example factory class for python microphysics models. The state passed as input has the source terms of the forced fields set to match the forcings provided, subject to imposed constraints on the water phases, namely that they lie between 0 and 1."""
 
     def __init__(self,state,
                  prescribed_fields={},
-                 forced_fields=tuple(),
+                 forced_fields={},
                  python_fields=tuple(),
                  forcings=tuple(),
                  slip_vels=tuple(),
                  dt=None):
         self.state=state
-#        print state.scalar_fields
-        self.prescribed_fields=prescribed_fields
+        self.prescribed_fields=prescribed_fields.keys()
         self.forced_fields=forced_fields.keys()
+        self.slip_vels=slip_vels
         self.dt=dt
-        self.fields={}
-        self.oldfields={}
+        self.fields={'old':False}
+        self.oldfields={'old':True}
         self._get_fields(prescribed_fields,forced_fields)
         self._add_python_fields(python_fields)
         self._calculateForcings()
         self._calculateSlipVels()
+        self._addSponges()
     
     def _get_fields(self,prescribed_fields,forced_fields):
         for field,name in prescribed_fields.items():
-            self.fields[field]=self.state.scalar_fields[name].val[:]
-            self.oldfields[field]=self.state.scalar_fields['Old'+name].val[:]
+            try:
+                self.fields[field]=self.state.scalar_fields['Iterated'+name].val[:]
+                self.fields['old_'+field]=self.state.scalar_fields['Old'+name].val[:]
+                self.oldfields[field]=self.state.scalar_fields['Old'+name].val[:]
+            except KeyError:
+                ewrite(3,'KeyError! %s'%field)
+                self.prescribed_fields.remove(field)
         for field,name in forced_fields.items():
-            self.fields[field]=self.state.scalar_fields['Iterated'+name].val[:]
-            self.oldfields[field]=self.state.scalar_fields['Old'+name].val[:]
+            try:
+                self.fields[field]=self.state.scalar_fields['Iterated'+name].val[:]
+                self.oldfields[field]=self.state.scalar_fields['Old'+name].val[:]
+                self.fields['old_'+field]=self.state.scalar_fields['Old'+name].val[:]
+            except KeyError:
+                ewrite(3,'KeyError! %s'%field)
+                self.forced_fields.remove(field)
         for field,name in forced_fields.items():
-            self.fields['delta'+field]=(
-                self.state.scalar_fields[name+'Source'].val)
-            self.fields['delta'+field][:]=0
+            try:
+                self.fields['delta'+field]=(
+                    self.state.scalar_fields[name+'Source'].val)
+                self.fields['delta'+field][:]=0.0
+            except KeyError:
+                ewrite(3,'KeyError! %s'%field)
+                pass
             try:
                 self.fields[field+'slip']=(
                     self.state.scalar_fields[name+'SinkingVelocity'].val)
-            except:
+                self.fields[field+'slip'][:]=0.0
+            except KeyError:
+                pass
+            try:
+                self.fields[field+'sponge']=(
+                    self.state.scalar_fields[name+'Sponge'].val)
+            except KeyError:
                 pass
         self.fields['dt']=self.dt
         self.oldfields['dt']=self.dt
@@ -68,6 +123,7 @@ class microphysics_model(object):
     def _add_python_fields(self,python_fields):
         for field_name,func in python_fields:
             self.fields[field_name]=func(**self.fields)
+            self.fields['old_'+field_name]=func(**self.oldfields)
             self.oldfields[field_name]=func(**self.oldfields)
 
     def _calculateForcings(self):
@@ -79,39 +135,68 @@ class microphysics_model(object):
 
         for F in self.forcings:
 #            f=F.forcing(**self.fields)
-            oldf=F.forcing(**self.oldfields)
+            oldf=(F.alpha*F.forcing(**self.fields)
+                  +(1.0-F.alpha)*F.forcing(**self.oldfields))
+            ewrite(3,(F.name, np.min(oldf), np.max(oldf)))
             for field_name,scale in F.items():
                 if field_name in dF:
                     dF[field_name]+=scale*(oldf)
                 else:
                     dF[field_name]=scale*(oldf)
 
-        print dF.keys()
-
         for field in dF:
-            fv=self.fields[field]
-            dF[field]=np.where(abs(dF[field])<1.0e-8,fv/self.dt,dF[field]) 
-            A=-fv/(self.dt*dF[field])
-            A=np.where(np.isnan(A),1.0,A)
-            alpha[field]=np.where((A>1.0)*(fv>0.0),1.0,A)
-            alpha[field]=np.where((A<0.0)*(fv>0.0),1.0,alpha[field])
-            alpha[field]=np.where((A>0.0)*(fv<0.0),1.0,alpha[field])
-            alpha[field]=np.where((A<0.0)*(fv<0.0),
-                                  np.minimum(-A,1.0e6),alpha[field])
+            try:
+                fv=self.fields[field]
+                dF[field]=np.where(abs(dF[field])<1.0e-8,fv/self.dt,dF[field]) 
+                A=-fv/(self.dt*dF[field])
+                A=np.where(np.isnan(A),1.0,A)
+                alpha[field]=np.where((A>1.0)*(fv>0.0),1.0,A)
+                alpha[field]=np.where((A<0.0)*(fv>0.0),1.0,alpha[field])
+                alpha[field]=np.where((A>0.0)*(fv<0.0),1.0,alpha[field])
+                alpha[field]=np.where((A<0.0)*(fv<0.0),
+                                      np.minimum(-A,1.0e6),alpha[field])
+            except KeyError:
+                pass
 
         for F in self.forcings:
 #            f=F.bound(F.forcing(**self.fields),alpha)
-            oldf=F.bound(F.forcing(**self.oldfields),alpha)
+#            oldf=F.bound(F.forcing(**self.oldfields),alpha)
+            oldf=(F.bound(F.alpha*F.forcing(**self.fields)
+                  +(1.0-F.alpha)*F.forcing(**self.oldfields),alpha))
             for field_name,scale in F.items():
-                q_w=self.fields['q_w']
-                if field_name[0]=='q':
-                    self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+fix(scale*(oldf),-q_w,q_w))
-                else:
-                    self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+scale*(oldf))   
+#                try:
+                    if field_name[0]=='q':
+                        q_w=0.5*self.fields['q_w']+0.5*self.oldfields['q_w']
+                        self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+fix(scale*(oldf),-q_w,q_w))
+                    elif field_name in('theta','e_i'):
+                        try:
+                            self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+scale*(oldf))
+                        except:
+                            pass
+                    else:
+                        self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+scale*(oldf))
+#                except KeyError:
+#                    pass
+
+        for field_name in self.forced_fields:
+                ewrite(3,(field_name,
+                          np.min(self.fields['delta'+field_name][:]),
+                   np.max(self.fields['delta'+field_name][:])))
+
+
+    def _addSponges(self):
+        for field_name in self.forced_fields:
+            if (field_name+'sponge') in self.fields:
+                self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+self.fields[field_name+'sponge'][:])
+
 
     def _calculateSlipVels(self):
-        pass
-
+        for S in self.slip_vels:
+            try:
+                self.fields[S.field+'slip'][:]=(0.5*S(self.fields)+
+                                                0.5*S(self.oldfields))
+            except KeyError:
+                ewrite(3,'No slip velocity for %s!'%S.field)
 
 L_v=2500000.0
 #m=0.018
@@ -126,12 +211,33 @@ nu=20.0
 rho_0=1.0
 k_c=1e-3
 a_c=5e-4
+cp=1000.0
+g=9.81
+cv=714.285714
+R=cp-cv
+cp_v=1840.0
+Rv=461.5
+cv_v= cp_v-Rv
+cw=4100.0
 
 def fix(x,a,b):
     return np.maximum(np.minimum(x,b),a)
 
-def testing(state,dt):
-    M=hot_moist_microphysics_model(state,dt)
+def testing(states,dt,parameters):
+
+
+    if len(states)>1:
+        state=states['Bulk']
+        
+        for a in ('WaterVapour','CloudWater','RainWater'):
+            state.scalar_fields['Iterated'+a+'Fraction']=states[a].scalar_fields['IteratedMassFraction']
+            state.scalar_fields[a+'FractionSource']=states[a].scalar_fields['MassFractionSource']
+            state.scalar_fields[a+'FractionSinkingVelocity']=states[a].scalar_fields['MassFractionSinkingVelocity']
+            state.scalar_fields['Old'+a+'Fraction']=states[a].scalar_fields['OldMassFraction']
+    else:
+        state=states.items()[0]
+
+    M=hot_moist_microphysics_model(state,dt,parameters)
 
 
         
@@ -139,28 +245,60 @@ def testing(state,dt):
 
         
 def get_gas_density(rho=None,q_g=None,q_v=None,q_c=None,q_r=None,**kwargs):
-#    print 'Gas Density'
+    ewrite(3,'Gas Density %f %f %f %f %f'%(rho.min(),rho.max(),
+                                           q_g.min(),q_c.max(),q_r.max()) )
     rho_g=rho*q_g/(1.0-rho*(q_c+q_r)/rho_w)
     return np.where(rho_g>0,rho_g,np.inf)
 
-def get_q_g(q_v,q_c,q_r,**kwargs):
-    return 1.0-q_c-q_r
+def get_T(q_v=None,q_c=None,q_r=None,e_i=None,theta=None,T=None,**kwargs):
+    c_v=cv+(cv_v-cv)*q_v+(cw-cv)*(q_c+q_r)
+    if not e_i==None:
+        return e_i/c_v
+    elif not T==None:
+        return T
+    else:
+        return 280.0
 
-def get_q_w(q_v,q_c,q_r,**kwargs):
-    return q_v+q_c-q_r
+def get_p(rho_g=None,T=None,q_v=None,q_g=None,**kwargs):
+    R_g=(R*q_g+(Rv-R)*q_v)/q_g
+    return rho_g*R_g*T
+
+def get_q_g(q_v=None,q_c=None,q_r=None,**kwargs):
+    return np.minimum(1.0-q_c-q_r,1.0)
+
+def get_q_w(q_v=None,q_c=None,q_r=None,**kwargs):
+    return q_v+q_c+q_r
+
+def p_sat(T):
+    return 611.2*np.exp(17.62*(T-273.0)/(T-30.0))
 
 def get_q_sat(rho=None,p=None,T=None,rho_g=None,q_v=None,
               q_c=None,q_r=None,**kwargs):
-    q_g=1.0-q_r-q_c
-    print 'T : ', np.min(T), np.max(T)
+    q_g=get_q_g(q_v,q_c,q_r)
+    ewrite(3,('T : ', np.min(T), np.max(T)))
     T=np.where(T<273.0,273.0,T)
-    P_sat=611.2*np.exp(17.62*(T-273.0)/(T-30.0))
-    q_sat =P_sat/R_v*(q_g/(rho_g*T))
+    q_sat =p_sat(T)/R_v*(q_g/(rho_g*T))
 
     return q_sat
     
-def supersaturation_fix(q_v=None,q_sat=None,dt=None,**kwargs):
-    return np.maximum((q_v-q_sat)/dt,0.0)
+def av(v1,v2,alpha=0.0):
+    return (alpha*v1+(1.0-alpha)*v2)
+
+def supersaturation_fix(rho=None,p=None,T=None,rho_g=None,q_v=None,
+              q_c=None,q_r=None,old_q_v=None,
+                        old_rho=None,old_p=None,old_T=None,old_rho_g=None,
+              old_q_c=None,old_q_r=None,dt=None,old=None,**kwargs):
+    if old==False:
+        q_sat=get_q_sat(rho=av(rho,old_rho),p=None,T=av(T,old_T),
+                        rho_g=av(rho_g,old_rho_g),q_v=av(q_v,old_q_v),
+              q_c=av(q_c,old_q_c),q_r=av(q_r,old_q_r),**kwargs)
+        q_v=av(q_v,old_q_v)
+        ewrite(3,('RH : ', np.min(q_v/q_sat), np.max(q_v/q_sat)))
+        ConN=np.maximum((q_v-q_sat)/dt,0.0)
+        ewrite(3,('ConN :', np.min(ConN), np.max(ConN)))
+        return ConN
+    else:
+        return 0
 
 
 def cloudwater_condensation(rho=None,p=None,T=None,
@@ -177,24 +315,16 @@ def cloudwater_condensation(rho=None,p=None,T=None,
 
     F_k=(L_v/(R_v*T)-1.0)*(L_v/(K_a*T))
 
-#    P_sat=np.exp(20.386-5132.0/T)
-
-    P_sat=611.2*np.exp(17.62*(T-273.0)/(T-30.0))
-
-    F_d=(R_v*T)/(P_sat*D_v)
+    F_d=(R_v*T)/(p_sat(T)*D_v)
 
     ConC=4.0*np.pi*(q_g/rho_g)*N_c*r_c*(S_w-1.0)/(F_k+F_d)
-#    ConC=4.0*np.pi*N_c*r_c*(S_w-1.0)/(F_k+F_d)
 
-#    print 'q_v : ', np.max(q_v), np.min(q_v)
-#    print 'q_c : ', np.max(q_c), np.min(q_c)
-#    print 'Delta: ',np.max(dt*ConC), np.min(dt*ConC)
-
-    return ConC
+    return np.minimum(ConC,0)
 
     
 def rainwater_condensation(rho=None,p=None,T=None,q_r=None,q_c=None,
-                           q_v=None,q_sat=None,rho_g=None,q_g=None,dt=4.0,**kwargs):
+                           q_v=None,q_sat=None,rho_g=None,q_g=None,
+                           dt=None,**kwargs):
     
     from scipy.special import gamma
 
@@ -206,16 +336,16 @@ def rainwater_condensation(rho=None,p=None,T=None,q_r=None,q_c=None,
     F_d=(R_v*T)/(P_sat*D_v)
 
 
-    print 'rain condensation in: %f %f'%(q_g.min(),rho_g.min())
+    ewrite(3,'rain condensation in: %f %f'%(q_g.min(),rho_g.min()))
     ConR=(2.0*np.pi*q_g/rho_g*N_0r*(S_w-1.0)/(F_k+F_d)*
-            ilambda_r**2.0
+            (ilambda_r**2.0
             +0.22*gamma(2.75)*np.sqrt(a_r/nu)
-                  *(rho_0/rho_g)**0.25*ilambda_r**(11.0/12.0))
-    print 'rain condensation out'
+                  *(rho_0/rho_g)**0.25*ilambda_r**(11.0/12.0)))
+    ewrite(3,'rain condensation out %f %f'%(ilambda_r.max(),ConR.max()))
 
     return ConR
 
-def water_droplet_autoconversion(q_c=None,q_r=None,rho_g=None,dt=4.0,**kwargs):
+def water_droplet_autoconversion(q_c=None,q_r=None,rho_g=None,dt=None,**kwargs):
 
     q_g=1.0-q_c-q_r
 
@@ -227,26 +357,45 @@ def warm_accreation(q_g=None,q_c=None,q_r=None,rho_g=None,rho_0=1.0,**kwargs):
 
     from scipy.special import gamma
 
-    print 'accreation in'
+    ewrite(3,'accreation in')
     ilambda_r=(np.maximum((rho_g*q_r)/(np.pi*q_g*rho_w*N_0r),0))**0.25
     Acc=np.pi/4.0*N_0r*a_r*np.sqrt(rho_0/rho_g)*gamma(3.5)*ilambda_r**3.5*q_c
-    print 'accreation out'
+    ewrite(3,'accreation out')
 
     return Acc
 
+def w_r(field,rho_g=None,q_r=None,q_g=None,w_r=None,**kwargs):
+
+    if w_r==None:
+        ilambda_r=(np.maximum((rho_g*q_r)/(np.pi*q_g*rho_w*N_0r),0))**0.25
+        r_r=ilambda_r/2.0
+        ewrite(3,'r_max=%f, q_g=(%f,%f)'%(r_r.max(),q_g.max(),q_g.min()))
+        field['w_r']=a_r*np.sqrt(r_r*rho_0/rho_g)
+        return field['w_r']
+    else:
+        return w_r
+
+def CloudScale(q_r=None,**kwargs):
+    return -q_r/(1.0-q_r)
+
+def VapourScale(q_r=None,**kwargs):
+    return -q_r/(1.0-q_r)
 
 class hot_moist_microphysics_model(microphysics_model):
 
     prescribed_fields={'T':"InsituTemperature",
                     'rho':"Density",
-                    'p':"EOSPressure"}
+                    'p':"Pressure"}
     forced_fields={'q_v':"WaterVapourFraction",
                    'q_c':"CloudWaterFraction",
                    'q_r':"RainWaterFraction",
-                   'e_i':"InternalEnergy"}
+                   'e_i':"InternalEnergy",
+                   'theta':"PotentialTemperature"}
     python_fields=[
+        ('T',get_T),
         ('q_g',get_q_g),
         ('rho_g',get_gas_density),
+        ('p',get_p),
         ('q_sat',get_q_sat),
         ('q_w',get_q_w),
         ]
@@ -257,35 +406,46 @@ class hot_moist_microphysics_model(microphysics_model):
 
     ConN=microphysics_forcing(supersaturation_fix,(('q_c',1.0),
                                                    ('q_v',-1.0),
-                                                   ('e_i',L_v)),
-                              ('q_c','q_v'))
+                                                   ('e_i',L_v),
+                                                   ('theta',L_v/cp)),
+                              ('q_c','q_v'),alpha=1.0,name='ConN')
     ConC=microphysics_forcing(cloudwater_condensation,(('q_c',1.0),
                                                        ('q_v',-1.0),
-                                                       ('e_i',L_v)),
-                               ('q_c','q_v'))
+                                                       ('e_i',L_v),
+                                                       ('theta',L_v/cp)),
+                               ('q_c','q_v'),alpha=1.0,name='ConC')
     ConR=microphysics_forcing(rainwater_condensation,(('q_r',1.0),
                                                       ('q_v',-1.0),
-                                                      ('e_i',L_v)),
-                              ('q_r','q_v'))
+                                                      ('e_i',L_v),
+                                                      ('theta',L_v/cp)),
+                              ('q_r','q_v'),alpha=1.0,name='ConR')
     Aut=microphysics_forcing(water_droplet_autoconversion,(('q_r',1.0),
                                                            ('q_c',-1.0)),
-                             ('q_r','q_c'))
+                             ('q_r','q_c'),alpha=0.0,name='Aut')
     Acc=microphysics_forcing(warm_accreation,(('q_r',1.0),
                                               ('q_c',-1.0)),
-                             ('q_r','q_c'))
+                             ('q_r','q_c'),alpha=1.0,name='Acc')
 
 
-#    forcings=tuple()
-#    forcings=(ConC,ConN)
-#    forcings=(ConC,ConR,Aut,Acc)
+    
+
+    RainSlip=slip_velocity('q_r',w_r)
+    CloudSlip=slip_velocity('q_c',w_r,CloudScale)
+    VapourSlip=slip_velocity('q_v',w_r,VapourScale)
+
+
     forcings=(ConN,ConC,ConR,Aut,Acc)
 
-    def __init__(self,state,dt):
+
+
+    slip_vels=(RainSlip,CloudSlip,VapourSlip)
+
+    def __init__(self,state,dt,parameters):
         microphysics_model.__init__(self,state, 
                                   self.prescribed_fields,
                                   self.forced_fields,
                                   self.python_fields,
                                   self.forcings,
-                                  tuple(),
+                                  self.slip_vels,
                                   dt
                                   )

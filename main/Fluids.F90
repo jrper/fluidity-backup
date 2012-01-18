@@ -168,6 +168,9 @@ contains
     LOGICAL :: have_k_epsilon
     character(len=OPTION_PATH_LEN) :: keps_option_path
 
+    ! cloud_microphysics
+    logical :: have_cloud_microphysics
+
     ! Pointers for scalars and velocity fields
     type(scalar_field), pointer :: sfield
     type(scalar_field) :: foam_velocity_potential
@@ -341,7 +344,7 @@ contains
 
 
     ! Initialise compressible state variables
-    if (have_option('/material_phase::Gas/equation_of_state/compressible')) then
+    if (have_option(trim(state(1)%option_path)//'/equation_of_state/compressible')) then
        call compressible_initialise(state)
     end if
 
@@ -413,10 +416,11 @@ contains
     end if
 
     ! Initialise microphysics routine
-    !    if (have_option('/cloud_microphysics')) then
-    if (.true.) then
+    have_cloud_microphysics=have_option('/cloud_microphysics')
+    if (have_cloud_microphysic) then
        call initialise_microphysics(state,current_time,dt)
     end if
+
     call initialise_diagnostics(filename, state)
 
     ! Initialise ice_meltrate, read constatns, allocate surface, and calculate melt rate
@@ -640,8 +644,7 @@ contains
              call solids(state(1), its, nonlinear_iterations)
           end if
 
-          !if (have_option("/cloud_microphysics")) then
-          if (.true.) then
+          if (have_cloud_microphysics) then
              call calculate_microphysics_forcings(state,current_time,dt)
           end if
           field_loop: do it = 1, ntsol
@@ -928,13 +931,14 @@ contains
              call adapt_state_prescribed(state, current_time)
              call update_state_post_adapt(state, metric_tensor, dt, sub_state, nonlinear_iterations, nonlinear_iterations_adapt)
 
-             !          if (have_option("/cloud_microphysics")) then
-             if (.true.) then
+
+             if(have_option("/io/stat/output_after_adapts")) call write_diagnostics(state, current_time, dt, timestep, not_to_move_det_yet=.true.)
+             call run_diagnostics(state)
+
+             if (have_cloud_microphysics) then
                 call calculate_microphysics_forcings(state,current_time,&
                      dt,adapt=.true.)
              end if
-             if(have_option("/io/stat/output_after_adapts")) call write_diagnostics(state, current_time, dt, timestep, not_to_move_det_yet=.true.)
-             call run_diagnostics(state)
 
           end if
 

@@ -34,14 +34,27 @@ module equation_of_state
   use global_parameters, only: OPTION_PATH_LEN
   use spud
   use sediment, only: get_sediment_name, get_nSediments
+  use boundary_conditions, only: set_dirichlet_consistent, get_boundary_condition_count
+  use petsc_solve_state_module
+  use sparsity_patterns_meshes
+  use transform_elements, only: transform_to_physical
+  use diagnostic_fields, only : calculate_galerkin_projection
+  
   implicit none
   
+  interface compressible_eos
+     module procedure compressible_eos_1mat,&
+          compressible_eos_mmat
+  end interface compressible_eos
+
   private
   public :: calculate_perturbation_density, mcD_J_W_F2002, &
             compressible_eos, compressible_material_eos, &
             set_EOS_pressure_and_temperature
 
 contains
+
+  
 
   subroutine calculate_perturbation_density(state, density, reference_density)
     !!< Calculates the perturbation density (i.e. the reference density is already subtracted)
@@ -276,7 +289,7 @@ contains
     
   end subroutine mcD_J_W_F2002
   
-  subroutine compressible_eos(state, density, pressure,full_pressure,drhodp,temperature)
+  subroutine compressible_eos_1mat(state, density, pressure,full_pressure,drhodp,temperature)
 
     type(state_type), intent(inout) :: state
     type(scalar_field), intent(inout), optional :: density, drhodp
@@ -353,10 +366,10 @@ contains
             complete_pressure=>extract_scalar_field(state,"Pressure")
          end if
          if (present(pressure))then
-            call compressible_eos_giraldo_mmat(state, eos_path, drhodp_local, &
+            call compressible_eos_giraldo_1mat(state, eos_path, drhodp_local, &
                  complete_pressure,density,pressure=pressure,temperature=temperature)
          else
-            call compressible_eos_giraldo_mmat(state, eos_path, drhodp_local, &
+            call compressible_eos_giraldo_1mat(state, eos_path, drhodp_local, &
                  complete_pressure,density=density, pressure=full_pressure,temperature=temperature)
          end if
 
@@ -406,7 +419,99 @@ contains
       call deallocate(drhodp_local)
     end if
 
-  end subroutine compressible_eos
+  end subroutine compressible_eos_1mat
+
+  subroutine compressible_eos_mmat(state, density, pressure,full_pressure,drhodp,temperature)
+
+    type(state_type), intent(inout), dimension(:) :: state
+    type(scalar_field), intent(inout), optional :: density, drhodp
+    type(scalar_field), intent(inout), optional :: full_pressure, pressure, temperature
+
+    type(scalar_field), pointer :: hp, complete_pressure, lp
+    integer :: stat
+    
+    character(len=OPTION_PATH_LEN) :: eos_path
+    type(scalar_field) :: drhodp_local
+
+    if (size(state)==1) then
+       call compressible_eos_1mat(state(1), density, pressure,full_pressure,drhodp,temperature)
+       return
+    end if
+
+    ewrite(1,*) 'Entering compressible_eos'
+    
+    if (present(drhodp)) then
+      drhodp_local=drhodp
+      if (present(density)) then
+         assert(drhodp%mesh==density%mesh)
+      end if
+      if (present(pressure)) then
+         assert(drhodp%mesh==pressure%mesh)
+      end if
+      if (present(full_pressure)) then
+         assert(drhodp%mesh==full_pressure%mesh)
+      end if
+   else if (present(density)) then
+      call allocate(drhodp_local, density%mesh, 'Localdrhop')
+   else if (present(pressure)) then
+      call allocate(drhodp_local, pressure%mesh, 'Localdrhop')
+   else if (present(full_pressure)) then
+      call allocate(drhodp_local, full_pressure%mesh, 'Localdrhop')
+   else
+      FLAbort("No point in being in here if you don't want anything out.")
+   end if
+   
+   eos_path = trim(state(1)%option_path)//'/equation_of_state'
+   
+   if(have_option(trim(eos_path)//'/compressible')) then       
+      if(have_option(trim(eos_path)//'/compressible/ATHAM')) then
+         
+        ! Eq. of state commonly used in atmospheric applications. See
+        ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
+        ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
+        
+         complete_pressure=>extract_scalar_field(state(1),"Pressure")
+         if (present(pressure))then
+            call compressible_eos_atham(state, eos_path, drhodp_local, &
+                 complete_pressure,density,pressure=pressure,temperature=temperature)
+         else
+            call compressible_eos_atham(state, eos_path, drhodp_local, &
+                 complete_pressure,density=density, pressure=full_pressure,temperature=temperature)
+         end if
+
+      else
+
+               FLAbort('Gone into multimaterial compressible_eos without having equation_of_state/compressible/ATHAM')
+
+      end if
+     
+  else
+    
+     ! I presume we dont' actually want to be here
+      FLAbort('Gone into compressible_eos without having equation_of_state/compressible')
+
+
+    end if
+
+    if(present(density)) then
+      ewrite_minmax(density)
+    end if
+
+    if(present(pressure)) then
+      ewrite_minmax(pressure)
+    end if
+
+    if(present(full_pressure)) then
+      ewrite_minmax(full_pressure%val)
+    end if
+
+    if(present(drhodp)) then      
+      ewrite_minmax(drhodp)
+    else
+      call deallocate(drhodp_local)
+    end if
+
+  end subroutine compressible_eos_mmat
     
   subroutine compressible_eos_stiffened_gas(state, eos_path, drhodp, &
     density, pressure)
@@ -691,36 +796,623 @@ contains
 
   end subroutine compressible_eos_giraldo
 
-subroutine make_bulk_quantities(bulk,q,q_val,denom)
-      type(scalar_field), intent(inout) :: bulk
-      type(scalar_field), intent(in) :: q(:)
-      type(scalar_field), intent(inout), optional :: denom
-      real, intent(in) :: q_val(size(q))
-      type(scalar_field) :: fac
+  subroutine make_bulk_quantities(bulk,q,q_val,denom)
+    type(scalar_field), intent(inout) :: bulk
+    type(scalar_field), intent(in) :: q(:)
+    type(scalar_field), intent(inout), optional :: denom
+    real, intent(in) :: q_val(size(q))
+    type(scalar_field) :: fac
+    
+    integer :: i
+    
+    ! Warning, this routine is a temporary hack to get bulk quantities
+    
+    
+    
+    call zero(bulk)
+    do i=1,size(q)
+       call addto(bulk,q(i),scale=q_val(i))
+    end do
+    
+    if (present(denom)) then
+       call allocate(fac,denom%mesh,"scale_factor")
+       call set(fac,denom)
+       call invert(fac)
+       call scale(bulk,fac)
+       call deallocate(fac)
+    end if
+    
+    
+  end subroutine make_bulk_quantities
+  
+  subroutine make_bulk_quantities_mmat(bulk,state,vtype)
+    type(scalar_field), intent(inout) :: bulk
+    type(state_type), intent(in), dimension(:) :: state(:)
+    character(len=*), intent(in) :: vtype
+    type(scalar_field), pointer :: fraction
+    type(scalar_field) :: dry_fraction
+    
+    integer :: i, stat
+    real :: q_val
+    character(len=OPTION_PATH_LEN) :: eos_path
+    
+    ! Warning, this routine is a temporary hack to get bulk quantities
+    
+    call zero(bulk)
+    call allocate(dry_fraction,bulk%mesh,"DryGasMassFraction")
+    call set(dry_fraction,1.0)
+    do i=2,size(state)
+       if (has_scalar_field(state(i),"MassFraction")) then
+          eos_path = trim(state(i)%option_path)//'/equation_of_state'
+          call get_option(trim(eos_path)//'/compressible/ATHAM/'//vtype, &
+               q_val, stat=stat)
+          fraction=>extract_scalar_field(state(i),"MassFraction")
+          if (stat /= 0) then 
+             ewrite(0,*) "Selected compressible eos but not specified "//vtype//" in "//state(i)%name//"."
+          else
+             call addto(bulk,fraction,scale=q_val)
+             call addto(dry_fraction,fraction,scale=-1.0)
+          end if
+       end if
+    end do
+    eos_path = trim(state(1)%option_path)//'/equation_of_state'
+    call get_option(trim(eos_path)//'/compressible/ATHAM/'//vtype, &
+         q_val, stat=stat)
+    if (stat /= 0) then 
+       ewrite(0,*) "Selected compressible eos but not specified "//vtype//" in "//state(1)%name//"."
+    else
+       call addto(bulk,dry_fraction,scale=q_val)
+    end if
+    call deallocate(dry_fraction)
 
-      integer :: i
+    print*, vtype, minval(bulk%val), maxval(bulk%val)
+    
+  end subroutine make_bulk_quantities_mmat
 
-      ! Warning, this routine is a temporary hack to get bulk quantities
+  subroutine make_incompressible_fix_mmat(incompfix,state,density)
+    type(scalar_field), intent(inout) :: incompfix
+    type(state_type), intent(in), dimension(:) :: state
+    type(scalar_field), intent(in) :: density
+
+    type(scalar_field), pointer :: fraction
+    character(len=OPTION_PATH_LEN) :: eos_path
+    integer :: i,stat
+    real :: rho
+
+    call zero(incompfix)
+
+    do i=1,size(state)
+       if (has_scalar_field(state(i),"MassFraction")) then
+          eos_path = trim(state(i)%option_path)//'/equation_of_state'
+          call get_option(trim(eos_path)//'/compressible/ATHAM/density', &
+               rho, stat=stat)
+          if (stat == 0) then
+             fraction=>extract_scalar_field(state(i),"MassFraction")
+             call addto(incompfix,fraction,scale=-1.0/rho)
+          end if
+       end if
+    end do
+    call scale(incompfix,density)
+    call addto(incompfix,1.0)
+
+  end subroutine make_incompressible_fix_mmat
+
+  subroutine make_atham_quantities(state,qc_p,qc_v,qc_solid,scaledq)
+
+    type(state_type), intent(in), dimension(:) :: state
+    type(scalar_field), intent(inout) :: qc_p,qc_v,qc_solid,scaledq
+
+    type(scalar_field), pointer :: fraction
+    character(len=OPTION_PATH_LEN) :: eos_path
+    integer :: i,stat
+    real :: c_v,c_p,rho
+    type(scalar_field) :: dry_fraction
+
+    call zero(qc_p)
+    call zero(qc_v)
+    call zero(qc_solid)
+    call zero(scaledq)
+
+    call allocate(dry_fraction,qc_solid%mesh,"DryGasMassFraction")
+    call set(dry_fraction,1.0)
+
+    do i=2,size(state)
+       if (has_scalar_field(state(i),"MassFraction")) then
+          fraction=>extract_scalar_field(state(i),"MassFraction")
+          call addto(dry_fraction,fraction,scale=-1.0)
+          eos_path = trim(state(i)%option_path)//'/equation_of_state'
+          call get_option(trim(eos_path)//'/compressible/ATHAM/C_P', &
+               c_p, stat=stat)
+          if (stat /= 0) then
+             ewrite(0,*) "Selected compressible eos but not specified C_P in "//state(i)%name//"."
+             cycle
+          end if
+          call get_option(trim(eos_path)//'/compressible/ATHAM/C_V', &
+               c_v, stat=stat)
+          if (stat /= 0) then 
+             ewrite(0,*) "Selected compressible eos but not specified C_V in "//state(i)%name//"."
+             cycle
+          end if
+          if (have_option(trim(eos_path)//'/compressible/ATHAM/density')) then
+             call get_option(trim(eos_path)//'/compressible/ATHAM/density',rho,stat)
+             call addto(qc_solid,fraction,scale=c_v)
+             call addto(scaledq,fraction,scale=1.0/rho)
+          else
+             call addto(qc_v,fraction,scale=c_v)
+             call addto(qc_p,fraction,scale=c_p)
+          end if
+       end if
+    end do
+    eos_path = trim(state(1)%option_path)//'/equation_of_state'
+    call get_option(trim(eos_path)//'/compressible/ATHAM/C_P', &
+         c_p, stat=stat)
+    if (stat /= 0) then 
+       ewrite(0,*) "Selected compressible eos but not specified C_P in "//state(i)%name//"."
+       c_p=0.0
+    end if
+    call get_option(trim(eos_path)//'/compressible/ATHAM/C_V', &
+         c_v, stat=stat)
+    if (stat /= 0) then 
+       ewrite(0,*) "Selected compressible eos but not specified C_V in "//state(i)%name//"."
+       c_v=0.0
+    end if
+    call addto(qc_v,dry_fraction,scale=c_v)
+    call addto(qc_p,dry_fraction,scale=c_p)
+
+    call deallocate(dry_fraction)
+    
+  end subroutine make_atham_quantities
+
+
+  subroutine compressible_eos_atham(state, eos_path, drhodp, &
+    complete_pressure,density, pressure,temperature)
+    ! Eq. of state commonly used in atmospheric applications. See
+    ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
+    ! density= P_0/(R*T)*(P/P_0)^((R+c_v)/c_p)
+    type(state_type), intent(inout), dimension(:) :: state
+    character(len=*), intent(in):: eos_path
+    type(scalar_field), intent(inout) :: drhodp
+    type(scalar_field), intent(inout), optional :: density, pressure,&
+         temperature
+    type(scalar_field), intent(in) :: complete_pressure
+    
+    ! locals
+    integer :: stat, gstat, cstat, pstat, tstat
+    type(scalar_field), pointer :: pressure_local, energy_local,&
+         & density_local, &
+         & temperature_local
+    type(scalar_field) :: energy_remap, pressure_remap, density_remap, &
+                          & temperature_remap,qc_v,qc_p,qc_solid,scaledq,&
+                          q_g, incompfix, temp_local, rhs, dpress
+    type(vector_field), pointer :: X
+    real :: reference_density, p0, c_p, c_v
+    real :: drhodp_node, power, temperature_node, density_node,&
+         pressure_node, energy_node,&
+         c_v_node, R_node, q_node, d_node, i_node
+    real :: R, c_p_water, c_v_water, R_water, rho_w
+    logical :: incompressible
+    integer :: node, thermal_variable, ele, nlin
+    type(csr_matrix) :: M
+    type(csr_sparsity), pointer :: M_sparsity
+    
+    call get_option(trim(eos_path)//'/compressible/ATHAM/reference_pressure', &
+                    p0, default=1.0e5)
+
+    X=>extract_vector_field(state(1), "Coordinate")
+
+    call allocate(qc_p,drhodp%mesh,"qc_p")
+    call allocate(qc_v,drhodp%mesh,"qc_v")
+    call allocate(qc_solid,drhodp%mesh,"qc_solid")
+    call allocate(scaledq,drhodp%mesh,"scaledp")
+
+    if (present(temperature)) then
+       call allocate(temp_local,temperature%mesh,"Temperature")
+    end if
+
+    call make_atham_quantities(state,qc_p,qc_v,qc_solid,scaledq)
+
+
+    density_local=>extract_scalar_field(state(1),"Density",stat=cstat)
+    pressure_local=>extract_scalar_field(state(1),"Pressure",stat=cstat)
+    call zero(drhodp)
+
+    if (drhodp%mesh==density_local%mesh) then 
+       if(drhodp%mesh==pressure_local%mesh ) then
+          call set(drhodp,pressure_local)
+       else
+          call calculate_galerkin_projection(state(1),pressure_local,drhodp)
+       end if
+       call invert(drhodp)
+       call scale(drhodp,density_local)
+    elseif (drhodp%mesh==pressure_local%mesh) then
+       call calculate_galerkin_projection(state(1),density_local,drhodp)
+       call invert(drhodp)
+       call scale(drhodp,pressure_local)
+       call invert(drhodp)
+    else
+       FLAbort("drhodp not on pressure or density mesh!")
+    end if
+    
+    if (has_scalar_field(state(1),'InternalEnergy')) then
+       thermal_variable=1
+       energy_local=>extract_scalar_field(state(1),'InternalEnergy',stat=stat)
+    else if (has_scalar_field(state(1),'PotentialTemperature')) then
+       thermal_variable=2
+       energy_local=>extract_scalar_field(state(1),'PotentialTemperature',&
+            stat=stat)
+       call allocate(dpress,drhodp%mesh,"LocalDeltaP")
+    else
+       FLAbort("No thermodynamic variable!")
+    end if
+
+    M_sparsity=>get_csr_sparsity_firstorder(state(1),drhodp%mesh,drhodp%mesh)
+    call allocate(M,M_sparsity,name="EOSMatrix")
+    call allocate(rhs,drhodp%mesh,name="RHS")
+
+    call zero(M)
+    call zero(rhs)
+
+
+    do ele=1,ele_count(drhodp)
+       call assemble_drhodp_matrix(ele,M,rhs,X,drhodp,&
+            density_local,pressure_local,&
+            energy_local,qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+    end do
+
+
+    ewrite_minmax(rhs)
+    ewrite_minmax(drhodp)
+    ewrite_minmax(density_local)
+    ewrite_minmax(pressure_local)
+    drhodp%option_path=pressure_local%option_path
+    call petsc_solve(drhodp,M,rhs)
+          
+
+    if(present(density)) then
+       ! calculate the density
+       ! density may equal density in state depending on how this
+       ! subroutine is called
+
+       call zero(M)
+       call zero(rhs)
+!       call remap_field(density_local,density)
+       call zero(density)
+
+       do ele=1,ele_count(density)
+          call assemble_density_matrix(ele,M,rhs,X,density,&
+               pressure_local,&
+               energy_local,qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+       end do
+
+       call petsc_solve(density,M,rhs,&
+            option_path=pressure_local%option_path)
+    end if
+    
+    if(present(pressure)) then
+       ! calculate the pressure using the eos and the calculated (probably prognostic)
+       ! density
+       
+       if (stat==0) then
+          assert(pressure%mesh==drhodp%mesh)
+          
+!          call remap_field(complete_pressure,pressure)
+!          call set(pressure,p0)
+          call calculate_galerkin_projection(state(1),pressure_local,pressure)
+
+          select case(thermal_variable)
+          case(1)
+             call zero(M)
+             call zero(rhs)
+
+
+             do ele=1,ele_count(pressure)
+                call assemble_pressure_matrix(ele,M,rhs,X,density_local,&
+                     pressure,&
+                     energy_local,qc_v,qc_p,qc_solid,&
+                     scaledq,p0,thermal_variable)
+             end do
+
+
+             call petsc_solve(pressure,M,rhs,&
+                  option_path=pressure_local%option_path)
+
+          case(2)
+
+             if (minval(pressure%val)<1e-7)&
+                  call set(pressure,p0)
+
+             do nlin=1,10
+
+                call zero(M)
+                call zero(rhs)
+                call zero(dpress)
+
+                do ele=1,ele_count(pressure)
+                   call assemble_pressure_matrix(ele,M,rhs,X,density_local,&
+                        pressure,energy_local,qc_v,qc_p,qc_solid,&
+                        scaledq,p0,thermal_variable)
+                end do
+
+                call petsc_solve(dpress,M,rhs,&
+                     option_path=pressure_local%option_path)
+
+                call addto(pressure,dpress)
+
+             end do
+          end select
+       else
+          FLExit('No Density in material_phase::'//trim(state(1)%name))
+       end if
+    end if
+    
+
+        if (present(temperature)) then
+       call zero(M)
+       call zero(rhs)
+       call remap_field(temperature,temp_local)
+
+       do ele=1,ele_count(temp_local)
+          call assemble_temperature_matrix(ele,M,rhs,X,temp_local,&
+               density_local,complete_pressure,&
+               energy_local,qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+       end do
+
+    
+       temp_local%option_path=pressure_local%option_path
+       call petsc_solve(temp_local,M,rhs)
+
+    end if
+
+
+    call deallocate(qc_p)
+    call deallocate(qc_v)
+    call deallocate(qc_solid)
+    call deallocate(scaledq)
+    call deallocate(M)
+    call deallocate(rhs)
+    if (present(temperature)) then
+       call set(temperature,temp_local)
+       call deallocate(temp_local)
+    end if
+    if (thermal_variable==2) call deallocate(dpress)
+
+  end subroutine compressible_eos_atham
+  
+  subroutine assemble_drhodp_matrix(ele,M,rhs,x,drhodp,&
+       density,pressure,energy,&
+       qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+    
+    integer, intent(in) :: ele, thermal_variable
+    real, intent(in) :: p0
+    type(csr_matrix), intent(inout) :: M
+    type(scalar_field) :: rhs
+    type(vector_field), intent(in) :: X
+    type(scalar_field), intent(in) :: drhodp,density,pressure,energy,&
+         qc_v,qc_p,qc_solid,scaledq
+    type(element_type), pointer :: myshape
+    integer, dimension(:), pointer :: nodes
+    real, dimension(ele_ngi(drhodp,ele)) :: detwei
+
+    real, dimension(ele_ngi(drhodp, ele)) :: qcv_gi,&
+         qcp_gi, qcs_gi, R_gi, p_gi
+    
+
+    
+    nodes=> ele_nodes(drhodp,ele)
+    myshape=> ele_shape(drhodp,ele)
+
+    qcv_gi=ele_val_at_quad(qc_v,ele)
+    qcp_gi=ele_val_at_quad(qc_p,ele)
+    qcs_gi=ele_val_at_quad(qc_solid,ele)
+    R_gi=qcp_gi-qcv_gi
+    
+    call transform_to_physical(X, ele,detwei)
+    
+    select case(thermal_variable)
+
+    case(1)
+       
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            R_gi*ele_val_at_quad(energy,ele)*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            (1.0-ele_val_at_quad(density,ele)&
+            *ele_val_at_quad(scaledq,ele))**2&
+            *(qcv_gi+qcs_gi)*detwei))
+    case(2)
+       
+       p_gi=ele_val_at_quad(pressure,ele)
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            p_gi**(R_gi/qcp_gi)*(R_gi*(qcp_gi+qcs_gi)*ele_val_at_quad(energy,ele)&
+            +ele_val_at_quad(scaledq,ele)&
+            *(p0**(R_gi/qcp_gi)*(qcp_gi)+p_gi**(R_gi/qcp_gi)*qcs_gi))&
+            *detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            (1.0-ele_val_at_quad(density,ele)&
+            *ele_val_at_quad(scaledq,ele))&
+            *(p0**(R_gi/qcp_gi)*(qcv_gi)+p_gi**(R_gi/qcp_gi)*qcs_gi)&
+            *detwei))
+
+    end select
+       
+    
+  end subroutine assemble_drhodp_matrix
+  
+  subroutine assemble_temperature_matrix(ele,M,rhs,x,temp,&
+       density,pressure,energy,&
+       qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+    
+    integer, intent(in) :: ele, thermal_variable
+    real, intent(in) :: p0
+    type(csr_matrix), intent(inout) :: M
+    type(scalar_field), intent(inout) :: rhs
+    type(vector_field), intent(in) :: X
+    type(scalar_field), intent(in) :: temp,density,pressure,energy,&
+         qc_v,qc_p,qc_solid,scaledq
+    type(element_type), pointer :: myshape
+    integer, dimension(:), pointer :: nodes
+    real, dimension(ele_ngi(temp,ele)) :: detwei
+
+    real, dimension(ele_ngi(temp, ele)) :: qcv_gi,&
+         qcp_gi, qcs_gi, R_gi, p_gi
+    
+    
+    nodes=> ele_nodes(temp,ele)
+    myshape=> ele_shape(temp,ele)
+
+    qcv_gi=ele_val_at_quad(qc_v,ele)
+    qcp_gi=ele_val_at_quad(qc_p,ele)
+    qcs_gi=ele_val_at_quad(qc_solid,ele)
+    R_gi=qcp_gi-qcv_gi
+    
+    call transform_to_physical(X, ele, detwei)
+    
+    select case(thermal_variable)
+
+    case(1)
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (ele_val_at_quad(qc_v,ele)+ele_val_at_quad(qc_solid,ele))*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            ele_val_at_quad(energy,ele)*detwei))
+
+    case(2)
+
+       p_gi=ele_val_at_quad(pressure,ele)
+       
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (p0**(R_gi/qcp_gi)*qcp_gi+p_gi**(R_gi/qcp_gi)*qcs_gi)*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            p_gi**(R_gi/qcp_gi)*(qcp_gi+qcs_gi)&
+            *ele_val_at_quad(energy,ele)*detwei))
+
+    end select
+       
+        
+  end subroutine assemble_temperature_matrix
+
+subroutine assemble_density_matrix(ele,M,rhs,x,&
+       density,pressure,energy,&
+       qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+    
+    integer, intent(in) :: ele, thermal_variable
+    type(csr_matrix), intent(inout) :: M
+    real, intent(in) :: p0
+    type(scalar_field) :: rhs
+    type(vector_field), intent(in) :: X
+    type(scalar_field), intent(in) :: density,pressure,energy,&
+         qc_v,qc_p,qc_solid,scaledq
+    type(element_type), pointer :: myshape
+    integer, dimension(:), pointer :: nodes
+    real, dimension(ele_ngi(density,ele)) :: detwei
+
+    real, dimension(ele_ngi(density, ele)) :: qcv_gi,&
+         qcp_gi, qcs_gi, R_gi, p_gi
+    
+    
+    nodes=> ele_nodes(density,ele)
+    myshape=> ele_shape(density,ele)
+
+    qcv_gi=ele_val_at_quad(qc_v,ele)
+    qcp_gi=ele_val_at_quad(qc_p,ele)
+    qcs_gi=ele_val_at_quad(qc_solid,ele)
+    R_gi=qcp_gi-qcv_gi
+    p_gi=ele_val_at_quad(pressure,ele)
+    
+    call transform_to_physical(X, ele,detwei)
+    
+    select case(thermal_variable)
+
+    case(1)
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (R_gi&
+            *ele_val_at_quad(energy,ele)&
+            +(qcv_gi+qcs_gi)*&
+            p_gi*ele_val_at_quad(scaledq,ele))*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            (qcv_gi+qcs_gi)*p_gi*detwei))
+
+    case(2)
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (R_gi*(qcp_gi+qcs_gi)*ele_val_at_quad(energy,ele)+&
+            p_gi*((p0/p_gi)**(R_gi/qcp_gi)*qcp_gi&
+            +qcs_gi)*ele_val_at_quad(scaledq,ele))*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            p_gi*((p0/p_gi)**(R_gi/qcp_gi)*qcp_gi+qcs_gi)*detwei))
+       
+    
+    end select
+
+  end subroutine assemble_density_matrix
+
+subroutine assemble_pressure_matrix(ele,M,rhs,x,&
+       density,pressure,energy,&
+       qc_v,qc_p,qc_solid,scaledq,p0,thermal_variable)
+    
+    integer, intent(in) :: ele, thermal_variable
+    real, intent(in) :: p0
+    type(csr_matrix), intent(inout) :: M
+    type(scalar_field) :: rhs
+    type(vector_field), intent(in) :: X
+    type(scalar_field), intent(in) :: density,pressure,energy,&
+         qc_v,qc_p,qc_solid,scaledq
+    type(element_type), pointer :: myshape
+    integer, dimension(:), pointer :: nodes
+    real, dimension(ele_ngi(pressure,ele)) :: detwei
+    
+    real, dimension(ele_ngi(pressure, ele)) :: qcv_gi,&
+         qcp_gi, qcs_gi, R_gi, p_gi, rho_gi, dqs_gi
+    
+    nodes=> ele_nodes(pressure,ele)
+    myshape=> ele_shape(pressure,ele)
+
+    qcv_gi=ele_val_at_quad(qc_v,ele)
+    qcp_gi=ele_val_at_quad(qc_p,ele)
+    qcs_gi=ele_val_at_quad(qc_solid,ele)
+    R_gi=qcp_gi-qcv_gi
+    p_gi=ele_val_at_quad(pressure,ele)
+    rho_gi=ele_val_at_quad(density,ele)
+    dqs_gi=ele_val_at_quad(scaledq,ele)
+    
+    call transform_to_physical(X, ele,detwei)
+    
+    select case(thermal_variable)
+
+    case(1)
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (qcv_gi+qcs_gi)*(1.0-rho_gi*dqs_gi)*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            R_gi*rho_gi*ele_val_at_quad(energy,ele)*detwei))
+
+    case(2)
+
+!       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+!            ((1.0-rho_gi*dqs_gi)*p_gi**(qcv_gi/qcp_gi)*&
+!            (p0**(R_gi/qcp_gi)*(qcp_gi+qcv_gi)&
+!            +2.0*p_gi**(R_gi/qcp_gi)*qcs_gi)&
+!            -rho_gi*R_gi*(qcp_gi+qcs_gi)*ele_val_at_quad(energy,ele))*detwei))
+
+       call addto(M,nodes,nodes,shape_shape(myshape,myshape,&
+            (1.0-rho_gi*dqs_gi)*((p0/p_gi)**(R_gi/qcp_gi)*qcv_gi+qcs_gi)&
+            *detwei))
+!       call addto(rhs,nodes,shape_rhs(myshape,&
+!            p_gi*(rho_gi*R_gi*(qcp_gi+qcs_gi)*ele_val_at_quad(energy,ele)&
+!            -(1.0-rho_gi*dqs_gi)*p_gi**(qcv_gi/qcp_gi)&
+!            *(p0**(R_gi/qcp_gi)*qcp_gi+p_gi**(R_gi/qcp_gi)*qcs_gi))*detwei))
+       call addto(rhs,nodes,shape_rhs(myshape,&
+            (rho_gi*R_gi*(qcp_gi+qcs_gi)*ele_val_at_quad(energy,ele)&
+            -(1.0-rho_gi*dqs_gi)*p_gi&
+            *((p0/p_gi)**(R_gi/qcp_gi)*qcp_gi+qcs_gi))*detwei))
+
+
+    end select
+    
+  end subroutine assemble_pressure_matrix
       
-
-
-      call zero(bulk)
-      do i=1,size(q)
-         call addto(bulk,q(i),scale=q_val(i))
-      end do
-
-      if (present(denom)) then
-         call allocate(fac,denom%mesh,"scale_factor")
-         call set(fac,denom)
-         call invert(fac)
-         call scale(bulk,fac)
-         call deallocate(fac)
-      end if
-
-
-    end subroutine make_bulk_quantities
-
-  subroutine compressible_eos_giraldo_mmat(state, eos_path, drhodp, &
+  subroutine compressible_eos_giraldo_1mat(state, eos_path, drhodp, &
     complete_pressure,density, pressure,temperature)
     ! Eq. of state commonly used in atmospheric applications. See
     ! Giraldo et. al., J. Comp. Phys., vol. 227 (2008), 3849-3877. 
@@ -774,10 +1466,6 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
     R_water=c_p_water-c_v_water
     rho_w=1000.0
 
-
-!    q_c=>extract_scalar_field(state,"CloudWaterFraction")
-!    q_r=>extract_scalar_field(state,"RainwaterFraction")
-
     call allocate(dummyscalar,drhodp%mesh,"dummy")
     call zero(dummyscalar)
 
@@ -821,13 +1509,13 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
          (/c_v,c_v_water,4100.0,4100.0/))
 
     density_local=>extract_scalar_field(state,"Density",stat=cstat)
+    pressure_local=>extract_scalar_field(state,"Pressure",stat=cstat)
 
     call zero(incompfix)
     call addto(incompfix,q_c,scale=-1.0/rho_w)
     call addto(incompfix,q_r,scale=-1.0/rho_w)
     call scale(incompfix,density_local)
     call addto(incompfix,1.0)
-
         
     incompressible = ((gstat/=0).or.(cstat/=0))
     if(incompressible) then
@@ -856,9 +1544,15 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
                   & call set(temp_local, node, temperature_node)
              ! horrible temporary hack
           end do
+
+          if (has_scalar_field(state,"PotentialTemperature")) &
+               call scale(drhodp,c_p) 
           call invert(drhodp)
           call scale(drhodp,incompfix)
           call scale(drhodp,incompfix)
+          if (has_scalar_field(state,"PotentialTemperature")) &
+               call scale(drhodp,c_v) 
+
        end if
        
        
@@ -893,6 +1587,7 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
              
              call set(density, node, density_node)
           end do
+
 !          call set(density,energy_remap)
 !          call scale(density,R_bulk)
 !          call invert(density)
@@ -906,6 +1601,8 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
 !          call addto(incompfix,q_g)
 !          call invert(incompfix)
 !          call scale(density,incompfix)
+
+!          call set_dirichlet_consistent(density)
           
           call deallocate(pressure_remap)
        end if
@@ -964,7 +1661,7 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
        call deallocate(temp_local)
     end if
     
-  end subroutine compressible_eos_giraldo_mmat
+  end subroutine compressible_eos_giraldo_1mat
   
   subroutine compressible_eos_foam(state, eos_path, drhodp, &
     density, pressure)
@@ -1187,28 +1884,69 @@ subroutine make_bulk_quantities(bulk,q,q_val,denom)
 
   end subroutine assemble_perturbation_pressure_rhs
 
+
+  subroutine set_temperature_from_potential_temperature(theta,pressure,&
+       temperature,p0,R,c_p)
+    type(scalar_field), intent(in) :: theta,pressure
+    real, intent(in) :: p0,R,c_p
+    type(scalar_field), intent(inout) :: temperature
+    type(scalar_field) :: remap_theta, remap_pressure
+    integer :: node
+
+    call allocate(remap_theta,temperature%mesh,"RemappedTheta")
+    call allocate(remap_pressure,temperature%mesh,"RemappedPressure")
+
+    call remap_field(theta,remap_theta)
+    call remap_field(pressure,remap_pressure)
+
+    do node=1,node_count(temperature)
+
+       call set(temperature,node,node_val(remap_theta,node)*(node_val(pressure,node)/p0)**(R/c_p))
+
+    end do
+
+    call deallocate(remap_pressure)
+    call deallocate(remap_theta)
+
+  end subroutine set_temperature_from_potential_temperature
+
+    
+
   subroutine set_EOS_pressure_and_temperature(state)
-    type(state_type), intent(inout) :: state
+    type(state_type), intent(inout), dimension(:) :: state
     type(scalar_field), pointer :: temperature,nl_field, pressure, density
+    integer :: work
+
+    work=0
 
     ! Here there will be magic done to put the Equation of state pressure
     ! and insitu bulk Temperature on the density mesh in the input state
 
-    if (has_scalar_field(state,"EOSPressure")) then
-       pressure=>extract_scalar_field(state,"EOSPressure")
+    if (has_scalar_field(state(1),"EOSPressure")) then
+       pressure=>extract_scalar_field(state(1),"EOSPressure")
+       work=work+1
     else
 !       ensure
 !       FLAbort("No EOSPressure field in state!")
     end if
-    if (has_scalar_field(state,"InsituTemperature")) then
-       temperature=>extract_scalar_field(state,"InsituTemperature")
+    if (has_scalar_field(state(1),"InsituTemperature")) then
+       temperature=>extract_scalar_field(state(1),"InsituTemperature")
+       work=work+2
     else
 !       FLAbort("No Temperature field in state!")
     end if
 
-    call compressible_eos(state,full_pressure=pressure,temperature=temperature)
-
-    contains 
+    select case(work)
+    case(0)
+    case(1)
+       call compressible_eos(state,full_pressure=pressure)
+    case(2)   
+       call compressible_eos(state,temperature=temperature)
+    case(3)   
+       call compressible_eos(state,full_pressure=pressure,&
+            temperature=temperature)
+    end select
+  contains 
 
 
       subroutine ensure_field(state,name)

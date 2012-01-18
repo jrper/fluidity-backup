@@ -243,7 +243,7 @@
          integer :: d
 
          !! Variables for multi-phase flow model
-         integer :: prognostic_count
+         integer :: prognostic_count, prognostic_pressure_count
          ! Do we have a prognostic pressure field to solve for?
          logical :: prognostic_p = .false.
          ! Prognostic pressure field's state index (if present)
@@ -268,10 +268,12 @@
 
          ! Are we running a multi-phase simulation?
          prognostic_count = option_count("/material_phase/vector_field::Velocity/prognostic")
+ !        prognostic_pressure_count = option_count("/material_phase/scalar_field::Pressure/prognostic")
          if(prognostic_count == 0) then
             return ! We don't have a velocity field to solve for, so exit.
          else if(prognostic_count > 1) then
-            multiphase = .true.
+ !           if prognostic_count > prognostic_pressure_count &
+                 multiphase = .true.
          else
             multiphase = .false.
          end if

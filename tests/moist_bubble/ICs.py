@@ -83,22 +83,30 @@ def TT(X):
 	from scipy.optimize import fsolve
 
 	def TtoTheta(T):
-		return (T*((p(X)/p0)**(-R_g(X)/(cp_T(X))))
-			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T)))-theta(X)
+#		return (T*((p(X)/p0)**(-R_g(X)/(cp_T(X))))
+#			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T)))-theta(X)
+
+
+		return T*((p0/p(X))**(R_g(X)/cp_g(X))*cp_g(X)*q_g(X))
+
 
 	def dTtoTheta(T):
-		return (((p(X)/p0)**(-R_g(X)/(cp_T(X))))
-			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T))
-			     -L_v*(q_c(X)+q_r(X))/(cp_T(X)*T**2)*
-			     T*((p(X)/p0)**(-R_g(X)/(cp_T(X))))
-			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T)))
+#		return (((p(X)/p0)**(-R_g(X)/(cp_T(X))))
+#			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T))
+#			     -L_v*(q_c(X)+q_r(X))/(cp_T(X)*T**2)*
+#			     T*((p(X)/p0)**(-R_g(X)/(cp_T(X))))
+#			*exp(L_v*(q_c(X)+q_r(X))/(cp_T(X)*T)))
+
+		return ((p0/p(X))**(R_g(X)/cp_g(X))*cp_g(X)*q_g(X))
 
 	T0=theta(X)*(p(X)/p0)**(R_g(X)/(cp_T(X)))
 		    
 			  
 
-	T=fsolve(TtoTheta,T0,
-		 fprime=dTtoTheta)
+#	T=fsolve(TtoTheta,T0,
+#		 fprime=dTtoTheta)
+
+	T= theta(X)*(p(X)/p0)**(R_g(X)/cp_g(X))
 	return T
 
 def T0(X):
