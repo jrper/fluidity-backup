@@ -384,8 +384,8 @@ def VapourScale(q_r=None,**kwargs):
 class hot_moist_microphysics_model(microphysics_model):
 
     prescribed_fields={'T':"InsituTemperature",
-                    'rho':"Density",
-                    'p':"Pressure"}
+                    'rho':"MaterialEOSDensity",
+                    'p':"EOSPressure"}
     forced_fields={'q_v':"WaterVapourFraction",
                    'q_c':"CloudWaterFraction",
                    'q_r':"RainWaterFraction",

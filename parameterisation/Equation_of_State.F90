@@ -1014,6 +1014,11 @@ contains
 
     density_local=>extract_scalar_field(state(1),"Density",stat=cstat)
     pressure_local=>extract_scalar_field(state(1),"Pressure",stat=cstat)
+
+    print*, size(density_local%val), size(pressure_local%val)
+
+
+
     call zero(drhodp)
 
     if (drhodp%mesh==density_local%mesh) then 
@@ -1029,8 +1034,14 @@ contains
        call invert(drhodp)
        call scale(drhodp,pressure_local)
        call invert(drhodp)
+    elseif (drhodp%mesh==pressure%mesh) then 
+       call calculate_galerkin_projection(state(1),density_local,drhodp)
+       call invert(drhodp)
+       call scale(drhodp,pressure)
+       call invert(drhodp)
     else
-       FLAbort("drhodp not on pressure or density mesh!")
+       call set(drhodp,1.0/300.0**2)
+!       FLAbort("drhodp not on pressure,density, or temperature mesh!")
     end if
     
     if (has_scalar_field(state(1),'InternalEnergy')) then

@@ -417,7 +417,7 @@ contains
 
     ! Initialise microphysics routine
     have_cloud_microphysics=have_option('/cloud_microphysics')
-    if (have_cloud_microphysic) then
+    if (have_cloud_microphysics) then
        call initialise_microphysics(state,current_time,dt)
     end if
 
