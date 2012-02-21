@@ -54,6 +54,7 @@ module advection_diffusion_DG
   use diagnostic_fields, only: calculate_diagnostic_variable
   use global_parameters, only : FIELD_NAME_LEN
   use field_options
+  use equation_of_state, only : safe_set
 
   implicit none
 
@@ -695,7 +696,7 @@ contains
     integer :: stat
 
     !! Gravitational sinking term
-    type(scalar_field) :: Sink
+    type(scalar_field) :: Sink, sink_local
     !! Direction of gravity
     type(vector_field) :: gravity
     !! Backup of U_nl for calculating sinking
@@ -828,13 +829,17 @@ contains
     Sink=extract_scalar_field(state, trim(field_name)//"SinkingVelocity"&
          &, stat=stat)
     if (stat==0) then
+       call allocate(sink_local,u_nl%mesh,"RemappedSinkingVelocity")
+       call set(sink_local,0.0)
+       call safe_set(state,sink_local,Sink)
        gravity=extract_vector_field(state, "GravityDirection")
 
        ! this may perform a "remap" internally from CoordinateMesh to VelocityMesh
-       call addto(U_nl, gravity, scale=Sink)
+       call addto(U_nl, gravity, scale=Sink_local)
        ! Gravitational sinking only makes sense if you include advection
        ! terms.
        include_advection=.true.
+       call deallocate(sink_local)
     end if
 
     if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
@@ -865,9 +870,13 @@ contains
 
     else
        ! Point these at something, so that the field dimensions are sane
-       energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity")
-       old_energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity")
-       allocate(particle_fraction(0),particle_densities(0))
+       energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity",stat=stat)
+       old_energy_density=>extract_scalar_field(state,"VelocityBuoyancyDensity",stat=stat)
+       if (stat /= 0) then 
+          energy_density=>extract_scalar_field(state,"Density",stat=stat)
+          old_energy_density=>extract_scalar_field(state,"Density",stat=stat)
+       end if
+       allocate (particle_fraction(0),particle_densities(0))
     end if
 
     ! Retrieve scalar options from the options dictionary.

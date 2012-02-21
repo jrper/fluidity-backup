@@ -1411,7 +1411,6 @@ contains
        end do
        call set(T_min, ele_nodes(T_min,ele), T_val_min)
     end do
-    call exit
 
     ! now for each P1DG node make sure the field value is between the recorded vertex min and max
     ! this is done without changing the element average (Tbar)

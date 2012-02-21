@@ -16,12 +16,15 @@ cv_v= cp_v-R_v
 c_w=4100.0
 rho_w=1000.0
 
+#a=1.0
+#b=1.0-a
+
 a=1.0
-b=1.0-a
+b=0
 
 def cv_g(X=None,qv=None,qc=None,qr=0.0):
 	if X != None:
-		return (cv*q_a(X)+cv_v*q_v(X))/(q_g(X))
+		return (cv+(cv_v-cv)*q_v(X))/(q_g(X))
 	else:
 		return (cv+(cv_v-cv)*qv-cv*(qc+qr))/(1.0-qc-qr)
 
@@ -125,18 +128,21 @@ def rho0(X):
 def p(X):
 	return p0*expres(X)**(cp/R)
 
-def ie(X):
-	return cv_T(X)*TT(X)#theta(X)*expres(X)
+def ie(X,aa=a):
+	global a
+	a=aa
+	return cv_g(X)*theta(X)*(p(X)/p0)**(R_g(X)/cp_g(X))
+#	return cv_T(X)*theta(X)*(p(X)/p0)**(R_g(X)/cp_g(X))
 
 def ie0(X):
 	return cv*T0(X)#theta0*expres(X)
 
 
-def q_v(X):
-	return a*pert(X,0.018)
+def q_v(X,aa=a):
+	return 0.00+a*pert(X,aa)
 
 def q_c(X):
-	return 0.0+a*pert(X,0.001)
+	return 0.0+a*pert(X,0.0)
 
 def q_r(X):
 	return a*pert(X,0.0)
@@ -146,6 +152,31 @@ def q_g(X):
 
 def q_a(X):
 	return 1.0-q_c(X)-q_r(X)-q_v(X)
+
+def thetaFromT(X,t):
+	qv=q_v(X)
+	qa=q_a(X)
+	qr=q_r(X)
+	qc=q_c(X)
+	T=TT(X)
+
+	Rg=(R*qa+R_v*qv)/(qa+qv)
+	cpg=(cp*qa+cp_v*qv)/(qa+qv)
+	
+
+	return (T*((p0/p(X))**(Rg/cpg)*(cp*qa+cp_v*qv)+c_w*(qc+qr))/
+		(cp*qa+cp_v*qv+c_w*(qc+qr)))
+
+def eFromTheta(theta,p,q_v,q_c,q_r):
+	q_a=1.0-q_v+q_c-q_r
+
+	R_g=(R*q_a+R_v*q_v)/(q_a+q_v)
+	cp_g=(cp*q_a+cp_v*q_v)/(q_a+q_v)
+	cp_T=(cp*q_a+cp_v*q_v+c_w*(q_c+q_r))
+	cv_T=(cv*q_a+cv_v*q_v+c_w*(q_c+q_r))
+
+	return (cv_T*theta*cp_T
+		/((p0/p)**(R_g/cp_g)*(cp*q_a+cp_v*q_v)+c_w*(q_c+q_r)))
 
 
 

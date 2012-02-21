@@ -207,7 +207,7 @@ contains
     type(tensor_field) :: Viscosity
 
     !! Momentum source and absorption fields
-    type(scalar_field) :: buoyancy
+    type(scalar_field) :: buoyancy, hb_buoyancy
     type(vector_field) :: Source, gravity, Abs, Abs_wd
     !! Surface tension field
     type(tensor_field) :: surfacetension
@@ -380,6 +380,13 @@ contains
     if(have_gravity) then
       buoyancy=extract_scalar_field(state, "VelocityBuoyancyDensity")
       call incref(buoyancy)
+      if (has_scalar_field(state,"HydroStaticBalanceDensity")) then
+         hb_buoyancy=extract_scalar_field(state, "HydroStaticBalanceDensity")
+         call incref(hb_buoyancy)
+      else
+         call allocate(hb_buoyancy, buoyancy%mesh, "HydroStaticBalanceDensity", FIELD_TYPE_CONSTANT)
+         call zero(hb_buoyancy)
+      end if
       gravity=extract_vector_field(state, "GravityDirection", stat)
       call incref(gravity)
 
@@ -387,6 +394,8 @@ contains
       gravity_magnitude = 0.0
       call allocate(buoyancy, u%mesh, "VelocityBuoyancyDensity", FIELD_TYPE_CONSTANT)
       call zero(buoyancy)
+      call allocate(hb_buoyancy, u%mesh, "HydroStaticBalanceDensity", FIELD_TYPE_CONSTANT)
+      call zero(hb_buoyancy)
       call allocate(gravity, u%dim, u%mesh, "GravityDirection", FIELD_TYPE_CONSTANT)
       call zero(gravity)
     end if
@@ -682,7 +691,7 @@ contains
        ele = fetch(clr_sets(clr), nnid)       
        call construct_momentum_element_dg(ele, big_m, rhs, &
             & X, U, advecting_velocity, U_mesh, X_old, X_new, &
-            & Source, Buoyancy, gravity, Abs, Viscosity, &
+            & Source, Buoyancy,hb_buoyancy, gravity, Abs, Viscosity, &
             & P, Rho, surfacetension, q_mesh, &
             & velocity_bc, velocity_bc_type, &
             & pressure_bc, pressure_bc_type, &
@@ -735,6 +744,7 @@ contains
     deallocate(pressure_bc_type)
     call deallocate(surfacetension)
     call deallocate(buoyancy)
+    call deallocate(hb_buoyancy)
     call deallocate(gravity)
     if(multiphase) then
       call deallocate(nvfrac)
@@ -747,7 +757,7 @@ contains
   end subroutine construct_momentum_dg
 
   subroutine construct_momentum_element_dg(ele, big_m, rhs, &
-       &X, U, U_nl, U_mesh, X_old, X_new, Source, Buoyancy, gravity, Abs, &
+       &X, U, U_nl, U_mesh, X_old, X_new, Source, Buoyancy,hb_buoyancy, gravity, Abs, &
        &Viscosity, P, Rho, surfacetension, q_mesh, &
        &velocity_bc, velocity_bc_type, &
        &pressure_bc, pressure_bc_type, &
@@ -771,7 +781,7 @@ contains
     type(block_csr_matrix), intent(inout), optional :: subcycle_m
 
     !! Position, velocity and source fields.
-    type(scalar_field), intent(in) :: buoyancy
+    type(scalar_field), intent(in) :: buoyancy, hb_buoyancy
     type(vector_field), intent(in) :: X, U, U_nl, Source, gravity, Abs
     type(vector_field), pointer :: U_mesh, X_old, X_new
     !! Viscosity
@@ -1278,17 +1288,20 @@ contains
       ! exactly at quadrature points.
         rhs_addto(:, :loc) = rhs_addto(:, :loc) + shape_vector_rhs(u_shape, &
                                     sphere_inward_normal_at_quad_ele(X, ele), &
-                                    detwei*gravity_magnitude*ele_val_at_quad(buoyancy, ele))
+                                    detwei*gravity_magnitude&
+                                    *(ele_val_at_quad(buoyancy, ele)-ele_val_at_quad(hb_buoyancy, ele)))
       else
       
         if(multiphase) then
           rhs_addto(:, :loc) = rhs_addto(:, :loc) + shape_vector_rhs(u_shape, &
                                     ele_val_at_quad(gravity, ele), &
-                                    detwei*gravity_magnitude*ele_val_at_quad(buoyancy, ele)*nvfrac_gi)
+                                    detwei*gravity_magnitude&
+                                    *(ele_val_at_quad(buoyancy, ele)-ele_val_at_quad(hb_buoyancy, ele)))
         else
           rhs_addto(:, :loc) = rhs_addto(:, :loc) + shape_vector_rhs(u_shape, &
                                     ele_val_at_quad(gravity, ele), &
-                                    detwei*gravity_magnitude*ele_val_at_quad(buoyancy, ele))
+                                    detwei*gravity_magnitude&
+                                    *(ele_val_at_quad(buoyancy, ele)-ele_val_at_quad(hb_buoyancy, ele)))
         end if
         
       end if

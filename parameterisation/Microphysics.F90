@@ -44,6 +44,12 @@ module microphysics
 
   implicit none
 
+  type logic_array
+     logical :: have_temp=.false.,&
+         have_EOSDensity=.false.,&
+         have_EOSPressure=.false.
+  end type logic_array
+
   private
   public calculate_microphysics_forcings, initialise_microphysics,&
        store_microphysics_source, calculate_gas_density, &
@@ -59,12 +65,14 @@ contains
 
     sfield1=>extract_scalar_field(state,name,stat=stat)
     if (stat /= 0) then
-       FLAbort('No field '//name//' in state to store!')
+       ewrite(3,*) ('No field '//name//' in state to store!')
+       return
     end if
     
     sfield2=>extract_scalar_field(state,'Old'//name,stat=stat)
     if (stat /= 0) then
-       FLAbort('No old field '//name//' in state to store in!')
+       ewrite(3,*) ('No old field '//name//' in state to store in!')
+       return
     end if
 
     call set(sfield2,sfield1)
@@ -81,20 +89,14 @@ contains
     character(len=OPTION_PATH_LEN) :: prefix
     integer :: i
     logical :: microphysics_on
+    type(scalar_field), dimension (:), allocatable :: extras
+    type(logic_array) :: logic
     
     if (have_option("/cloud_microphysics/microphysical_model")) then
        prefix="/cloud_microphysics/microphysical_mdeol"
     end if
        
-    if (size(state)==1) then
-       microphysics_on=has_scalar_field(state(1),"CloudWaterFraction")
-    else
-       microphysics_on=.false.
-       do i = 1, size(state)
-          if (trim(state(i)%name)=="CloudWater") &
-               microphysics_on=.true.
-       end do
-    end if
+    microphysics_on=have_option("/cloud_microphysics/")
 
     if (microphysics_on) then
        if (.not. present(adapt)) then
@@ -110,13 +112,31 @@ contains
              call store_microphysics_source(state(1),"RainWaterFractionSource")
              call store_microphysics_source(state(1),"WaterVapourFractionSource")
           end if
-          call store_microphysics_source(state(1),"InsituTemperature")
-          call store_microphysics_source(state(1),"EOSPressure")
+          i=3
+          if (has_scalar_field(state(1),"InsituTemperature")) then
+             call store_microphysics_source(state(1),"InsituTemperature")
+             logic%have_temp=.true.
+             i=i-1
+          end if
+          if (has_scalar_field(state(1),"EOSPressure")) then
+             call store_microphysics_source(state(1),"EOSPressure")
+             logic%have_EOSPressure=.true.
+             i=i-1
+          end if
+          if (has_scalar_field(state(1),"EOSDensity")) then
+             call store_microphysics_source(state(1),"EOSDensity")
+             logic%have_EOSDensity=.true.
+             i=i-1
+          end if
+          allocate(extras(2*i))
        end if
 
-       call set_EOS_pressure_and_temperature(state)    
+       call set_EOS_pressure_and_temperature(state,&
+            logic%have_temp,&
+            logic%have_EOSPressure,&
+            logic%have_EOSDensity,extras=extras)    
        call calculate_microphysics_from_python(state,&
-            prefix,current_time,dt)
+            prefix,current_time,dt,extras,logic)
        if (present(adapt)) then
           if (size(state)>1) then
              do i=2,size(state)
@@ -127,21 +147,31 @@ contains
              call store_microphysics_source(state(1),"RainWaterFractionSource")
              call store_microphysics_source(state(1),"WaterVapourFractionSource")
           end if
+          if (logic%have_temp) &
           call store_microphysics_source(state(1),"InsituTemperature")
-          call store_microphysics_source(state(1),"EOSPressure")
+          if (logic%have_EOSPressure) &
+               call store_microphysics_source(state(1),"EOSPressure")
+          if (logic%have_EOSDensity) &
+               call store_microphysics_source(state(1),"EOSDensity")
        end if
 
+       do i=1,size(extras)
+          call deallocate(extras(i))
+       end do
+       deallocate(extras)
     end if
 
   end subroutine calculate_microphysics_forcings
 
-  subroutine calculate_microphysics_from_python(state,prefix,current_time,dt)
+  subroutine calculate_microphysics_from_python(state,prefix,current_time,dt,extras,logic)
     ! Set microphysical  source terms from python.
     type(state_type),intent(inout), dimension(:) :: state
     character(len=*), intent(in) :: prefix
     character(len = 30) :: buffer
     real, intent(in) :: current_time
     real, intent(in) :: dt
+    type(logic_array), intent(in) :: logic
+    type(scalar_field), dimension(:), intent(in) :: extras
 
     character(len=*), parameter :: par_prefix="/cloud_microphysics/parameters"
 
@@ -155,6 +185,11 @@ contains
 #ifdef HAVE_NUMPY
     call python_reset()
     call python_add_states(state)
+
+    do i=1,size(extras)
+       call python_add_field(extras(i),state(1))
+    end do
+
     write(buffer,*) current_time
     call python_run_string("time="//trim(buffer))
     write(buffer,*) dt
@@ -304,7 +339,7 @@ subroutine initialise_microphysics(state,current_time,dt)
   end if
 
   if (microphysics_on) then
-     call set_EOS_pressure_and_temperature(state)
+     call set_EOS_pressure_and_temperature(state,.true.,.true.,.true.)
      call calculate_microphysics_forcings(state,current_time,dt)
   end if
 

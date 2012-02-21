@@ -351,7 +351,13 @@ contains
             if(have_option(trim(option_path)//'/compressible')) then
               call allocate(eosdensity, mesh, "LocalCompressibleEOSDensity")
             
-              call compressible_eos(state(state_order(i)), density=eosdensity)
+              if (have_option(trim(option_path)//'/compressible/ATHAM')) then
+                 call compressible_eos(state,&
+                      density=eosdensity)
+              else
+                 call compressible_eos(state(state_order(i)),&
+                      density=eosdensity)
+              end if
               
               if(present(bulk_density)) then
                 call set(bulk_density, eosdensity)

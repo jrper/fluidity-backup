@@ -2609,7 +2609,7 @@ contains
    end subroutine calculate_max_bed_shear_stress
 
    subroutine calculate_galerkin_projection_scalar_from_scalar(state, projected_field, field,lump_mass)
-     type(state_type), intent(in) :: state
+     type(state_type), intent(inout) :: state
      type(scalar_field), intent(in) ::projected_field
      type(scalar_field), intent(inout) :: field
      logical, optional :: lump_mass
@@ -2623,8 +2623,17 @@ contains
      logical :: dg
      logical :: check_integrals
      logical :: apply_bcs
+     logical :: local_lump_mass
 
      integer :: ele
+
+     if (present(lump_mass)) then
+        local_lump_mass=lump_mass
+     else
+        local_lump_mass=.false.
+     end if
+
+     ewrite(2,*), ("projecting "//trim(projected_field%name)//" to "//trim(field%name))
 
      dg = (continuity(field) < 0)
 
@@ -2637,16 +2646,17 @@ contains
      ! Assuming they're on the same quadrature
      assert(ele_ngi(field, 1) == ele_ngi(projected_field, 1))
 
-     if (.not. dg .and. .not. present(lump_mass)) then
+     if ((.not. dg) .and. (.not. local_lump_mass)) then
+
        mass_sparsity = make_sparsity(field%mesh, field%mesh, name="MassMatrixSparsity")
        call allocate(mass, mass_sparsity, name="MassMatrix")
        call zero(mass)
-     else if (lump_mass) then
+     else if (local_lump_mass) then
        call allocate(mass_lumped, field%mesh, name="GalerkinProjectionMassLumped")
        call zero(mass_lumped)
      end if
      
-     if (present(lump_mass) .or. .not. dg) then
+     if (local_lump_mass .or. .not. dg) then
        call allocate(rhs, field%mesh, name="GalerkinProjectionRHS")
        call zero(rhs)
      end if
@@ -2656,7 +2666,7 @@ contains
                                       &  mass, rhs, ele, dg)
      end do
 
-     if (present(lump_mass)) then
+     if (local_lump_mass) then
        call allocate(inverse_mass_lumped, field%mesh, &
           name="GalerkinProjectionInverseMassLumped")
        call invert(mass_lumped, inverse_mass_lumped)
@@ -2713,7 +2723,7 @@ contains
 
          proj_field_val = ele_val(projected_field, ele)
          little_rhs = matmul(little_mba, proj_field_val)
-         
+
          if (present(lump_mass)) then
            call addto(mass_lumped, ele_nodes(field, ele), &
              sum(little_mass,2))

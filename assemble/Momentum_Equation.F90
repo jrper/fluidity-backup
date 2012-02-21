@@ -268,7 +268,7 @@
 
          ! Are we running a multi-phase simulation?
          prognostic_count = option_count("/material_phase/vector_field::Velocity/prognostic")
- !        prognostic_pressure_count = option_count("/material_phase/scalar_field::Pressure/prognostic")
+         prognostic_pressure_count = option_count("/material_phase/scalar_field::Pressure/prognostic")
          if(prognostic_count == 0) then
             return ! We don't have a velocity field to solve for, so exit.
          else if(prognostic_count > 1) then

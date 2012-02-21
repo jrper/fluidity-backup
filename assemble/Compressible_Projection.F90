@@ -901,7 +901,7 @@ contains
     real, dimension(:,:,:), allocatable :: j_mat
     
     real, dimension(:), allocatable :: density_at_quad, olddensity_at_quad, p_at_quad, &
-                                      drhodp_at_quad, eosp_at_quad, fulleosp_at_quad,abs_at_quad
+                                      drhodp_at_quad, eosp_at_quad, abs_at_quad
     real, dimension(:,:), allocatable :: nlvelocity_at_quad
 
     ! loop integers
@@ -911,7 +911,7 @@ contains
     type(vector_field), pointer :: coordinate, nonlinearvelocity, velocity
     type(scalar_field), pointer :: pressure, density, olddensity
     type(scalar_field), pointer :: source, absorption
-    type(scalar_field) :: eospressure, eosfullpressure, drhodp
+    type(scalar_field) :: eospressure, drhodp
     type(scalar_field),target :: dummyscalar
     real :: theta, atmospheric_pressure
 
@@ -973,18 +973,15 @@ contains
       ! the multiplication of the eos (of course that may not be possible in which case
       ! something should be done at the gauss points instead)
       call allocate(eospressure, density%mesh, 'EOSPressure')
-      call allocate(eosfullpressure, density%mesh, 'EOSFullPressure')
       call allocate(drhodp, density%mesh, 'DerivativeDensityWRTBulkPressure')
       call allocate(dummyscalar, density%mesh, 'DummyField')
   
       call zero(eospressure)
-      call zero(eosfullpressure)
       call zero(drhodp)
       call zero(dummyscalar)
   
       ! this needs to be changed to be evaluated at the quadrature points!
       call compressible_eos(state, pressure=eospressure, drhodp=drhodp)
-      call compressible_eos(state,full_pressure=eosfullpressure)
 
       ewrite_minmax(density%val)
       ewrite_minmax(olddensity%val)
@@ -1019,7 +1016,6 @@ contains
               j_mat(field%dim, field%dim, ele_ngi(density, 1)), &
               drhodp_at_quad(ele_ngi(drhodp, 1)), &
               eosp_at_quad(ele_ngi(eospressure, 1)), &
-              fulleosp_at_quad(ele_ngi(eosfullpressure, 1)), &
               abs_at_quad(ele_ngi(density, 1)), &
               p_at_quad(ele_ngi(pressure, 1)))
       
@@ -1038,7 +1034,6 @@ contains
         
         drhodp_at_quad = ele_val_at_quad(drhodp, ele)
         eosp_at_quad = ele_val_at_quad(eospressure, ele)
-        fulleosp_at_quad = ele_val_at_quad(eosfullpressure, ele)
         
         select case(stabilisation_scheme)
           case(STABILISATION_SUPG)
@@ -1088,7 +1083,6 @@ contains
 
       call deallocate(drhodp)
       call deallocate(eospressure)
-      call deallocate(eosfullpressure)
       call deallocate(dummyscalar)
     
    end if
@@ -1176,12 +1170,16 @@ contains
        ewrite(1,*) "Calculating initial pressure from other fields"
        sfield=>extract_scalar_field(state(1),"Pressure",stat)
        call compressible_eos(state,pressure=sfield)
+       sfield=>extract_scalar_field(state(1),"OldPressure",stat)
+       call compressible_eos(state,pressure=sfield,getold=.true.)
     case(5)
        FLAbort("Currently requires an energy initial condition")
     case(6)
        ewrite(1,*) "Calculating initial density from other fields"
        sfield=>extract_scalar_field(state(1),"Density",stat)
        call compressible_eos(state,density=sfield)
+       sfield=>extract_scalar_field(state(1),"OldDensity",stat)
+       call compressible_eos(state,density=sfield,getold=.true.)
     case(7)
        ewrite(1,*), "Too many ICs specified. Using energy and pressure"
        sfield=>extract_scalar_field(state(1),"Density",stat)

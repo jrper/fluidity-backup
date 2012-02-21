@@ -6,15 +6,34 @@ import warnings,sys
 
 def myWarning(*args):
     ewrite(3,warnings.formatwarning(*args))
-warnings.showwarning=myWarning
 
+def myNumpyWarning(errstr,errflag):
+    ewrite(3,errstr)
+
+warnings.showwarning=myWarning
+np.seterrcall(myNumpyWarning)
+np.seterr(all='call')
 
 if 'current_debug_level' not in __builtin__.__dict__:
     __builtin__.current_debug_level=0
 
 def ewrite(priority_level,output):
-    if priority_level<=current_debug_level:
+    if priority_level<=__builtin__.current_debug_level:
         print output
+
+class microphysics_limit(dict):
+    
+    def __init__(self,value,arg,logic,fargs,name=''):
+        dict.__init__(self)
+        self.value=value
+        self.name=name
+        self.arg=arg
+        self.logic=logic
+        for larg in fargs:
+            try:
+                self[larg[0]]=larg[1]
+            except TypeError:
+                self[larg]=1.0
 
 class microphysics_forcing(dict):
     
@@ -58,12 +77,16 @@ class slip_velocity(object):
 
 class microphysics_model(object):
 
-    """ An example factory class for python microphysics models. The state passed as input has the source terms of the forced fields set to match the forcings provided, subject to imposed constraints on the water phases, namely that they lie between 0 and 1."""
+    """ An example factory class for python microphysics models.
+    The state passed as input has the source terms of the forced 
+    fields set to match the forcings provided, subject to imposed 
+    constraints on the water phases, namely that they lie between 0 and 1."""
 
     def __init__(self,state,
                  prescribed_fields={},
                  forced_fields={},
                  python_fields=tuple(),
+                 limits=tuple(),
                  forcings=tuple(),
                  slip_vels=tuple(),
                  dt=None):
@@ -72,10 +95,13 @@ class microphysics_model(object):
         self.forced_fields=forced_fields.keys()
         self.slip_vels=slip_vels
         self.dt=dt
+        self.forcings=forcings
+        self.limits=limits
         self.fields={'old':False}
         self.oldfields={'old':True}
         self._get_fields(prescribed_fields,forced_fields)
         self._add_python_fields(python_fields)
+        self._calculateLimits()
         self._calculateForcings()
         self._calculateSlipVels()
         self._addSponges()
@@ -126,6 +152,43 @@ class microphysics_model(object):
             self.fields['old_'+field_name]=func(**self.oldfields)
             self.oldfields[field_name]=func(**self.oldfields)
 
+    def _calculateLimits(self):
+        for F in self.limits:
+            lim=F.value(**self.fields)
+            dlim=lim-self.fields[F.arg][:]
+            mask=F.logic(lim,self.fields[F.arg][:],**self.fields)
+            lim=np.where(mask,lim,self.fields[F.arg][:])
+            dlim=lim-self.fields[F.arg][:]
+            self.fields[F.arg][:]=lim
+
+#            print 'limiter:', lim.min(), lim.max()
+#            print mask
+
+            for fname,scale in F.items():
+                try:
+                    if fname[0]=='q':
+                        self.fields[fname][:]+=scale*dlim
+                    else:
+                        self.fields['delta'+fname][:]+=scale*dlim/self.dt
+                except KeyError:
+                    pass
+
+            lim=F.value(**self.oldfields)
+            dlim=lim-self.oldfields[F.arg][:]
+            mask=F.logic(lim,self.oldfields[F.arg][:],**self.oldfields)
+            lim=np.where(mask,lim,self.oldfields[F.arg][:])
+            dlim=lim-self.oldfields[F.arg][:]
+
+ #           print 'limiter:', lim.min(), lim.max()
+            
+            self.oldfields[F.arg][:]=lim
+            for fname,scale in F.items():
+                try:
+                    self.oldfields[fname][:]+=scale*dlim
+                except KeyError:
+                    pass
+            
+
     def _calculateForcings(self):
 
         a=0.0
@@ -137,12 +200,14 @@ class microphysics_model(object):
 #            f=F.forcing(**self.fields)
             oldf=(F.alpha*F.forcing(**self.fields)
                   +(1.0-F.alpha)*F.forcing(**self.oldfields))
-            ewrite(3,(F.name, np.min(oldf), np.max(oldf)))
+            ewrite(3,(F.name, np.min(oldf), np.max(oldf),'First'))
             for field_name,scale in F.items():
                 if field_name in dF:
-                    dF[field_name]+=scale*(oldf)
+                    dF[field_name][:]=dF[field_name][:]+scale*oldf
                 else:
                     dF[field_name]=scale*(oldf)
+
+#        print 'DF', dF['q_v'].max(),dF['q_v'].min()
 
         for field in dF:
             try:
@@ -163,11 +228,18 @@ class microphysics_model(object):
 #            oldf=F.bound(F.forcing(**self.oldfields),alpha)
             oldf=(F.bound(F.alpha*F.forcing(**self.fields)
                   +(1.0-F.alpha)*F.forcing(**self.oldfields),alpha))
+            ewrite(3,(F.name, np.min(oldf), np.max(oldf),'second'))
             for field_name,scale in F.items():
 #                try:
                     if field_name[0]=='q':
-                        q_w=0.5*self.fields['q_w']+0.5*self.oldfields['q_w']
-                        self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+fix(scale*(oldf),-q_w,q_w))
+                        q_w=self.oldfields['q_w'][:]
+                        q_lw=self.oldfields['q_lw'][:]
+                        q_v=abs(self.oldfields['q_v'][:])
+#                        print F.name, field_name, oldf.max(), oldf.min(), 
+                        if field_name=='q_v':
+                            self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+fix(scale*(oldf),-q_v,q_lw))
+                        else:
+                            self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+fix(scale*(oldf),-q_lw,q_v))
                     elif field_name in('theta','e_i'):
                         try:
                             self.fields['delta'+field_name][:]=(self.fields['delta'+field_name][:]+scale*(oldf))
@@ -225,7 +297,6 @@ def fix(x,a,b):
 
 def testing(states,dt,parameters):
 
-
     if len(states)>1:
         state=states['Bulk']
         
@@ -269,6 +340,9 @@ def get_q_g(q_v=None,q_c=None,q_r=None,**kwargs):
 def get_q_w(q_v=None,q_c=None,q_r=None,**kwargs):
     return q_v+q_c+q_r
 
+def get_q_lw(q_v=None,q_c=None,q_r=None,**kwargs):
+    return q_c+q_r
+
 def p_sat(T):
     return 611.2*np.exp(17.62*(T-273.0)/(T-30.0))
 
@@ -281,17 +355,30 @@ def get_q_sat(rho=None,p=None,T=None,rho_g=None,q_v=None,
 
     return q_sat
     
-def av(v1,v2,alpha=0.0):
+def av(v1,v2,alpha=1.0):
     return (alpha*v1+(1.0-alpha)*v2)
+
+
+def negative_fix_logic(f,v,**kwargs):
+    return v<0.0
+
+def negative_fix(q_v=None,**kwargs):
+    return 0.0*q_v
+
+def supersaturation_fix_logic(r,v,**kwargs):
+    return r<v
 
 def supersaturation_fix(rho=None,p=None,T=None,rho_g=None,q_v=None,
               q_c=None,q_r=None,old_q_v=None,
                         old_rho=None,old_p=None,old_T=None,old_rho_g=None,
               old_q_c=None,old_q_r=None,dt=None,old=None,**kwargs):
+    q_sat=get_q_sat(rho,p,T,rho_g,q_v,
+              q_c,q_r,**kwargs)
+    return q_sat
     if old==False:
-        q_sat=get_q_sat(rho=av(rho,old_rho),p=None,T=av(T,old_T),
-                        rho_g=av(rho_g,old_rho_g),q_v=av(q_v,old_q_v),
-              q_c=av(q_c,old_q_c),q_r=av(q_r,old_q_r),**kwargs)
+#        q_sat=get_q_sat(rho=av(rho,old_rho),p=None,T=av(T,old_T),
+#                        rho_g=av(rho_g,old_rho_g),q_v=av(q_v,old_q_v),
+#              q_c=av(q_c,old_q_c),q_r=av(q_r,old_q_r),**kwargs)
         q_v=av(q_v,old_q_v)
         ewrite(3,('RH : ', np.min(q_v/q_sat), np.max(q_v/q_sat)))
         ConN=np.maximum((q_v-q_sat)/dt,0.0)
@@ -384,7 +471,7 @@ def VapourScale(q_r=None,**kwargs):
 class hot_moist_microphysics_model(microphysics_model):
 
     prescribed_fields={'T':"InsituTemperature",
-                    'rho':"MaterialEOSDensity",
+                    'rho':"EOSDensity",
                     'p':"EOSPressure"}
     forced_fields={'q_v':"WaterVapourFraction",
                    'q_c':"CloudWaterFraction",
@@ -398,33 +485,35 @@ class hot_moist_microphysics_model(microphysics_model):
         ('p',get_p),
         ('q_sat',get_q_sat),
         ('q_w',get_q_w),
+        ('q_lw',get_q_lw)
         ]
 
 
     # First build your microphysical source terms:
 
 
-    ConN=microphysics_forcing(supersaturation_fix,(('q_c',1.0),
-                                                   ('q_v',-1.0),
-                                                   ('e_i',L_v),
-                                                   ('theta',L_v/cp)),
-                              ('q_c','q_v'),alpha=1.0,name='ConN')
+    ConN=microphysics_limit(supersaturation_fix,'q_v',
+                            supersaturation_fix_logic,
+                            (('q_c',-1.0),
+                             ('e_i',-L_v),
+                             ('theta',-L_v/cp)),
+                            name='ConN')
     ConC=microphysics_forcing(cloudwater_condensation,(('q_c',1.0),
                                                        ('q_v',-1.0),
                                                        ('e_i',L_v),
                                                        ('theta',L_v/cp)),
-                               ('q_c','q_v'),alpha=1.0,name='ConC')
+                               ('q_c','q_v'),alpha=0.0,name='ConC')
     ConR=microphysics_forcing(rainwater_condensation,(('q_r',1.0),
                                                       ('q_v',-1.0),
                                                       ('e_i',L_v),
                                                       ('theta',L_v/cp)),
-                              ('q_r','q_v'),alpha=1.0,name='ConR')
+                              ('q_r','q_v'),alpha=0.0,name='ConR')
     Aut=microphysics_forcing(water_droplet_autoconversion,(('q_r',1.0),
                                                            ('q_c',-1.0)),
                              ('q_r','q_c'),alpha=0.0,name='Aut')
     Acc=microphysics_forcing(warm_accreation,(('q_r',1.0),
                                               ('q_c',-1.0)),
-                             ('q_r','q_c'),alpha=1.0,name='Acc')
+                             ('q_r','q_c'),alpha=0.0,name='Acc')
 
 
     
@@ -433,8 +522,19 @@ class hot_moist_microphysics_model(microphysics_model):
     CloudSlip=slip_velocity('q_c',w_r,CloudScale)
     VapourSlip=slip_velocity('q_v',w_r,VapourScale)
 
+    qvlim=microphysics_limit(negative_fix,'q_v',
+                            negative_fix_logic,
+                             tuple(),
+                            name='qvlim')
 
-    forcings=(ConN,ConC,ConR,Aut,Acc)
+    qclim=microphysics_limit(negative_fix,'q_c',
+                            negative_fix_logic,
+                            tuple(),
+                            name='qvlim')
+
+
+    limits=(ConN,)
+    sources=(ConC,ConR,Aut,Acc)
 
 
 
@@ -445,7 +545,8 @@ class hot_moist_microphysics_model(microphysics_model):
                                   self.prescribed_fields,
                                   self.forced_fields,
                                   self.python_fields,
-                                  self.forcings,
+                                  self.limits,
+                                  self.sources,
                                   self.slip_vels,
                                   dt
                                   )

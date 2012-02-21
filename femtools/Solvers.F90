@@ -49,6 +49,7 @@ module solvers
   use petscmat 
   use petscksp 
   use petscpc
+  use petscsnes
 #endif
 #endif
   implicit none
@@ -60,6 +61,7 @@ module solvers
 #include "finclude/petscmatdef.h"
 #include "finclude/petsckspdef.h"
 #include "finclude/petscpcdef.h"
+#include "finclude/petscsnesdef.h"
 #else
 #include "finclude/petsc.h"
 #if PETSC_VERSION_MINOR==0
@@ -67,6 +69,7 @@ module solvers
 #include "finclude/petscmat.h"
 #include "finclude/petscksp.h"
 #include "finclude/petscpc.h"
+#include "finclude/petscsnes.h"
 #endif
 #endif
 
@@ -94,11 +97,18 @@ module solvers
   type(vector_field), dimension(3), save:: petsc_monitor_vfields
   character(len=FIELD_NAME_LEN), save:: petsc_monitor_vtu_name
   integer, save:: petsc_monitor_vtu_series=0
-  
+
+  !variables for the nonlinear_solve_routines
+
+  type(scalar_field), pointer :: nl_sfield
+  type(csr_matrix) :: J_csr
+  type(petsc_numbering_type) :: nl_petsc_numbering
+
 private
 
 public petsc_solve, set_solver_options, &
-   complete_solver_option_path
+   complete_solver_option_path,&
+   petsc_solve_nonlinear
 
 ! meant for unit-testing solver code only:
 public petsc_solve_setup, petsc_solve_core, petsc_solve_destroy, &
@@ -113,6 +123,10 @@ interface petsc_solve
      petsc_solve_tensor_components, &
      petsc_solve_scalar_petsc_csr, petsc_solve_vector_petsc_csr
 end interface
+
+interface petsc_solve_nonlinear
+   module procedure petsc_solve_nonlinear_scalar
+end interface petsc_solve_nonlinear
   
 interface set_solver_options
     module procedure set_solver_options_with_path, &
@@ -202,6 +216,107 @@ subroutine petsc_solve_scalar(x, matrix, rhs, option_path, &
        & solver_option_path)
   
 end subroutine petsc_solve_scalar
+
+subroutine petsc_solve_nonlinear_scalar(x, func,dfuncdx, option_path, &
+  iterations_taken)
+  !!< Solve a nonlinear system using PETSC.
+  type(scalar_field), intent(inout), target :: x
+  external func, dfuncdx
+  character(len=*), optional, intent(in) :: option_path
+  !! the number of petsc iterations taken
+  integer, intent(out), optional :: iterations_taken
+  
+  SNES snes
+  Mat J, M
+  Vec y, b
+
+  character(len=OPTION_PATH_LEN):: solver_option_path
+  integer literations
+  logical lstartfromzero
+  integer :: n, ierr
+  
+  ! setup PETSc object and petsc_numbering
+  if (present(option_path)) then
+     solver_option_path=complete_solver_option_path(option_path)
+  else
+     solver_option_path=complete_solver_option_path(x%option_path)
+  end if
+
+  n=size(x%val)
+  nl_sfield=>x
+
+  call SNESCreate(PETSC_COMM_WORLD,snes,ierr)
+  call VecCreateSeq(PETSC_COMM_self,n,y,ierr)
+  call VecDuplicate(y,b,ierr)
+
+  call allocate(nl_petsc_numbering, &
+        nnodes=n, nfields=1)
+
+  ! Jacobian Matrix
+
+  call MatCreate(PETSC_COMM_SELF,J,ierr)
+  call MatSetSizes(J,PETSC_DECIDE,PETSC_DECIDE,n,n,ierr)
+  call MatSetFromOptions(J,ierr)
+
+  call SNESSetFunction(snes,b,FormFunction,func,ierr)
+  call SNESSetJacobian(snes,J,J,FormJacobian,dfuncdx,ierr)
+  call SNESSetFromOptions(snes,ierr)
+
+  !initialise
+
+  call field2petsc(x,nl_petsc_numbering,y)
+
+  call SNESSolve(snes,PETSC_NULL_OBJECT,y,ierr)
+     
+  call SNESGetIterationNumber(snes,literations,ierr)
+  if (present(iterations_taken)) iterations_taken = literations
+
+  call petsc2field(y, nl_petsc_numbering, x)
+
+  ! Copy back the result using the petsc numbering:
+
+  call VecDestroy(y,ierr)
+  call VecDestroy(b,ierr)
+  call MatDestroy(J,ierr)
+  call SNESDestroy(snes,ierr)
+
+  call deallocate(J_csr)
+  call deallocate(nl_petsc_numbering)
+  
+  
+  ! destroy all PETSc objects and the petsc_numbering
+  
+
+end subroutine petsc_solve_nonlinear_scalar
+
+subroutine FormFunction(snes,xvec,f,func,ierr)
+  
+  SNES snes
+  Vec xvec,f
+  PetscErrorCode ierr
+  external func
+  
+  call petsc2field(xvec,nl_petsc_numbering,nl_sfield)
+  call func(nl_sfield)
+  call field2petsc(nl_sfield,nl_petsc_numbering,f)
+  
+end subroutine FormFunction
+       
+subroutine FormJacobian(snes,xvec,jac,M2,flag,dfuncdx,ierr)
+  SNES snes
+  Vec xvec
+  Mat jac,M2, M
+  MatStructure flag
+  PetscErrorCode ierr
+  external dfuncdx
+
+  call petsc2field(xvec,nl_petsc_numbering,nl_sfield)
+  call dfuncdx(nl_sfield,J_csr)
+  M=csr2petsc(J_csr,nl_petsc_numbering)
+  call MatCopy(M,jac,DIFFERENT_NONZERO_PATTERN,ierr)
+  call MatDestroy(M,ierr)
+
+end subroutine FormJacobian
 
 subroutine petsc_solve_scalar_multiple(x, matrix, rhs, option_path)
   !!< Solves multiple scalar fields with the same matrix.
