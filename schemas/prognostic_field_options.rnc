@@ -224,34 +224,71 @@ prognostic_scalar_field =
             }
          )
       }?,
-      ## Source term. If the scalar field to be 
-      ## solved for is subcycled then variations 
-      ## in this source field across the subcycled 
-      ## time steps are not considered.
-      element scalar_field {
-         attribute name { "Source" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt
-            }|
-            element diagnostic {
-               (
-                  scalar_python_diagnostic_algorithm |
-                  internal_algorithm
-               ),
-               ## Add the source field directly to the 
-               ## matrix system right hand side. To be 
-               ## consistent this term should be tested 
-               ## using the function space that 
-               ## is used for the spatial discretisation.
-               element add_directly_to_rhs {
-                  comment
-               }?,
-               diagnostic_scalar_field_no_adapt
-            } 
-         )
-      }?,
+      (
+         ## Source term. If the scalar field to be 
+         ## solved for is subcycled then variations 
+         ## in this source field across the subcycled 
+         ## time steps are not considered.
+         element scalar_field {
+            attribute name { "Source" },
+            attribute rank { "0" },
+            element type {
+               attribute name { "SourceField"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  ## Add the source field directly to the 
+                  ## matrix system right hand side. To be 
+                  ## consistent this term should be tested 
+                  ## using the function space that 
+                  ## is used for the spatial discretisation.
+                  element add_directly_to_rhs {
+                     comment
+                  }?,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }|
+         ## Multiple Source term. Each source term of a given
+         ## field must have a unique name. If the scalar field to be 
+         ## solved for is subcycled then variations 
+         ## in this source field across the subcycled 
+         ## time steps are not considered.
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            element type {
+               attribute name { "SourceField"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  ## Add the source field directly to the 
+                  ## matrix system right hand side. To be 
+                  ## consistent this term should be tested 
+                  ## using the function space that 
+                  ## is used for the spatial discretisation.
+                  element add_directly_to_rhs {
+                     comment
+                  }?,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }
+      )*,
       ## Absorption term
       element scalar_field {
          attribute name { "Absorption" },

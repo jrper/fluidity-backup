@@ -1926,20 +1926,42 @@ prognostic_density_field =
          )
       }*,
       ## source term
-      element scalar_field {
-         attribute name { "Source" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt,
-               recalculation_options?
-            }|
-            element diagnostic {
-              internal_algorithm,
-              diagnostic_scalar_field_no_adapt
-            } 
-         )
-      }?,
+      (
+         element scalar_field {
+            attribute name { "Source" },
+            attribute rank { "0" },
+            element type {
+               attribute name {"SourceField"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt,
+                  recalculation_options?
+               }|
+               element diagnostic {
+                  internal_algorithm,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }|
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            element type {
+               attribute name {"SourceField"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt,
+                  recalculation_options?
+               }|
+               element diagnostic {
+                  internal_algorithm,
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
+         }
+      )*,
       ## Absorption term
       element scalar_field {
          attribute name { "Absorption" },
