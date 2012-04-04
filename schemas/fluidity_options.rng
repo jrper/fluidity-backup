@@ -2624,29 +2624,61 @@ want this.</a:documentation>
         </group>
       </element>
     </zeroOrMore>
-    <optional>
-      <element name="scalar_field">
+    <zeroOrMore>
+      <choice>
         <a:documentation>source term</a:documentation>
-        <attribute name="name">
-          <value>Source</value>
-        </attribute>
-        <attribute name="rank">
-          <value>0</value>
-        </attribute>
-        <choice>
-          <element name="prescribed">
-            <ref name="prescribed_scalar_field_no_adapt"/>
-            <optional>
-              <ref name="recalculation_options"/>
-            </optional>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>Source</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <element name="type">
+            <attribute name="name">
+              <value>SourceField</value>
+            </attribute>
           </element>
-          <element name="diagnostic">
-            <ref name="internal_algorithm"/>
-            <ref name="diagnostic_scalar_field_no_adapt"/>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+              <optional>
+                <ref name="recalculation_options"/>
+              </optional>
+            </element>
+            <element name="diagnostic">
+              <ref name="internal_algorithm"/>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <attribute name="name">
+            <data type="string" datatypeLibrary=""/>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <element name="type">
+            <attribute name="name">
+              <value>SourceField</value>
+            </attribute>
           </element>
-        </choice>
-      </element>
-    </optional>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+              <optional>
+                <ref name="recalculation_options"/>
+              </optional>
+            </element>
+            <element name="diagnostic">
+              <ref name="internal_algorithm"/>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+      </choice>
+    </zeroOrMore>
     <optional>
       <element name="scalar_field">
         <a:documentation>Absorption term</a:documentation>
