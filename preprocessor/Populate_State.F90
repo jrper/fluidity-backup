@@ -101,9 +101,10 @@ module populate_state_module
 
   !! Relative paths under a field that are searched for grandchildren
   !! (moved here because of extremely obscure intel ICE -Stephan)
-  character(len=OPTION_PATH_LEN), dimension(1):: &
+  character(len=OPTION_PATH_LEN), dimension(2):: &
          grandchild_paths = (/&
-         &    "/spatial_discretisation/inner_element" &
+         &    "/spatial_discretisation/inner_element",&
+              "/relaxation_term                     " &
          /)
 
 contains
@@ -2175,16 +2176,24 @@ contains
   end subroutine allocate_and_insert_tensor_field
 
   subroutine allocate_and_insert_children(path, state, parent_mesh, parent_name, &
-       dont_allocate_prognostic_value_spaces)
+       dont_allocate_prognostic_value_spaces,local_name)
     character(len=*), intent(in) :: path !! option_path including prescribed/prognostic
     type(state_type), intent(inout) :: state
     character(len=*), intent(in) :: parent_mesh
     character(len=*), intent(in) :: parent_name
     logical, optional, intent(in) :: dont_allocate_prognostic_value_spaces
+    character(len=*), intent(in), optional :: local_name
+
+    type(state_type), pointer :: bucket
+    type(scalar_field), pointer :: sfield
+    type(vector_field), pointer :: vfield
+    type(tensor_field), pointer :: tfield
 
     character(len=OPTION_PATH_LEN) child_path, child_name
-    character(len=FIELD_NAME_LEN) :: mesh_name
-    integer i
+    character(len=FIELD_NAME_LEN) :: mesh_name, subfield_type
+    integer i, stat
+
+    character(len=*), parameter :: subfield_attribute="/type"
     
     ewrite(2,*) "    Inserting children of: ",trim(path)
     do i=0, option_count(trim(path)//"/scalar_field")-1
@@ -2194,9 +2203,24 @@ contains
        child_path=trim(path)//"/scalar_field::"//trim(child_name)
        call get_option(trim(complete_field_path(trim(child_path)))//"/mesh/name", &
                        mesh_name, default=trim(parent_mesh))
+       if (present(local_name))&
+            child_name=trim(local_name)//'::'//child_name
        call allocate_and_insert_scalar_field(child_path, state, &
             parent_mesh=mesh_name, parent_name=parent_name, &
+            field_name=child_name,&
             dont_allocate_prognostic_value_spaces=dont_allocate_prognostic_value_spaces)
+
+       if (have_option(trim(child_path)//subfield_attribute)) then
+          call get_option(trim(child_path)//subfield_attribute,subfield_type)
+          ! put grouped fields into their own bucket as well
+          sfield => extract_scalar_field(state,&
+               trim(parent_name)//trim(child_name))
+          bucket => extract_child_state(state,&
+               trim(parent_name)//"::"//trim(subfield_type),&
+               insert_if_absent=.true.)
+          call insert(bucket,sfield,trim(child_name))
+       end if
+          
     end do
     do i=0, option_count(trim(path)//"/vector_field")-1
        child_path=trim(path)//"/vector_field["//int2str(i)//"]"
@@ -2205,9 +2229,25 @@ contains
        child_path=trim(path)//"/vector_field::"//trim(child_name)
        call get_option(trim(complete_field_path(trim(child_path)))//"/mesh/name", &
                        mesh_name, default=trim(parent_mesh))
+       if (present(local_name))&
+            child_name=trim(local_name)//'::'//child_name
        call allocate_and_insert_vector_field(child_path, state, &
             parent_mesh=mesh_name, parent_name=parent_name, &
+            field_name=child_name,&
             dont_allocate_prognostic_value_spaces=dont_allocate_prognostic_value_spaces)
+
+
+       if (have_option(trim(child_path)//subfield_attribute)) then
+          call get_option(trim(child_path)//subfield_attribute,subfield_type)
+          ! put grouped fields into their own bucket as well
+          vfield => extract_vector_field(state,&
+               trim(parent_name)//trim(child_name))
+          bucket => extract_child_state(state,&
+               trim(parent_name)//"::"//trim(subfield_type),&
+               insert_if_absent=.true.)
+          call insert(bucket,vfield,trim(child_name))
+       end if
+
     end do
     do i=0, option_count(trim(path)//"/tensor_field")-1
        child_path=trim(path)//"/tensor_field["//int2str(i)//"]"
@@ -2216,9 +2256,23 @@ contains
        child_path=trim(path)//"/tensor_field::"//trim(child_name)
        call get_option(trim(complete_field_path(trim(child_path)))//"/mesh/name", &
                        mesh_name, default=trim(parent_mesh))
+       if (present(local_name))&
+            child_name=trim(local_name)//'::'//child_name
        call allocate_and_insert_tensor_field(child_path, state, &
             parent_mesh=mesh_name, parent_name=parent_name, &
             dont_allocate_prognostic_value_spaces=dont_allocate_prognostic_value_spaces)
+
+       if (have_option(trim(child_path)//subfield_attribute)) then
+          call get_option(trim(child_path)//subfield_attribute,subfield_type)
+          ! put grouped fields into their own bucket as well
+          tfield => extract_tensor_field(state,&
+               trim(parent_name)//trim(child_name))
+          bucket => extract_child_state(state,&
+               trim(parent_name)//"::"//trim(subfield_type),&
+               insert_if_absent=.true.)
+          call insert(bucket,tfield,trim(child_name))
+       end if
+
     end do
 
   end subroutine allocate_and_insert_children
@@ -2231,18 +2285,24 @@ contains
     type(state_type), intent(inout) :: state
     character(len=*), intent(in) :: parent_mesh
     character(len=*), intent(in) :: parent_name
+    character(len=OPTION_PATH_LEN) ::  local_path, local_name
     logical, optional, intent(in) :: dont_allocate_prognostic_value_spaces
 
     
-    integer :: i
+    integer :: i,j
 
     ! This is necessarily somewhat more sui generis than
     ! allocate_and_insert_children.
 
     do i = 1, size(grandchild_paths)
-       call allocate_and_insert_children(trim(path)&
-            &//trim(grandchild_paths(i)), state, parent_mesh, parent_name, &
-            &dont_allocate_prognostic_value_spaces=dont_allocate_prognostic_value_spaces)
+       do j=1,option_count(trim(path)//trim(grandchild_paths(i)))
+          local_path=trim(path)//trim(grandchild_paths(i))//'['//int2str(j-1)//']'
+          call get_option(trim(local_path)//'/name',local_name,default='')
+          call allocate_and_insert_children(local_path,&
+               state, parent_mesh,parent_name, &
+               &dont_allocate_prognostic_value_spaces=dont_allocate_prognostic_value_spaces,&
+               local_name=local_name)
+       end do
     end do
 
   end subroutine allocate_and_insert_grandchildren

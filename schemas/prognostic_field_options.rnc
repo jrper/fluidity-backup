@@ -232,9 +232,7 @@ prognostic_scalar_field =
          element scalar_field {
             attribute name { "Source" },
             attribute rank { "0" },
-            element type {
-               attribute name { "SourceField"}
-            },
+            attribute type { "Sources"},
             (
                element prescribed {
                   prescribed_scalar_field_no_adapt
@@ -264,9 +262,7 @@ prognostic_scalar_field =
          element scalar_field {
             attribute name { string },
             attribute rank { "0" },
-            element type {
-               attribute name { "SourceField"}
-            },
+            attribute type { "Sources"},
             (
                element prescribed {
                   prescribed_scalar_field_no_adapt
@@ -290,22 +286,84 @@ prognostic_scalar_field =
          }
       )*,
       ## Absorption term
-      element scalar_field {
-         attribute name { "Absorption" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt
-            }|
-            element diagnostic {
+      (
+         element scalar_field {
+            attribute name { "Absorption" },
+            attribute rank { "0" },
+            attribute type { "Absorptions"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
+         }|
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            attribute type { "Absorptions"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
+         }
+      )*,
+
+      ## Relaxation term
+      (
+         element relaxation_term{
+            attribute name { string },
+            element scalar_field {
+               attribute name { "RelaxationCoefficent" },
+               attribute rank { "0" },
+               attribute type { "RelaxationCoefficients"},
                (
-                  scalar_python_diagnostic_algorithm |
-                  internal_algorithm
-               ),
-               diagnostic_scalar_field_no_adapt
+                  element prescribed {
+                     prescribed_scalar_field_no_adapt
+                  }|
+                  element diagnostic {
+                     (
+                        scalar_python_diagnostic_algorithm |
+                        internal_algorithm
+                     ),
+                     diagnostic_scalar_field_no_adapt
+                  }
+               )
+            },
+            element scalar_field {
+               attribute name { "RelaxationValue" },
+               attribute rank { "0" },
+               attribute type { "RelaxationValues"},
+               (
+                  element prescribed {
+                     prescribed_scalar_field_no_adapt
+                  }|
+                  element diagnostic {
+                     (
+                        scalar_python_diagnostic_algorithm |
+                        internal_algorithm
+                     ),
+                     diagnostic_scalar_field_no_adapt
+                  }
+               )
             }
-         )
-      }?,
+         }*
+      ),
+
       ## Velocity at which this substance sinks through the water column.
       ## 
       ## This velocity is in the direction of gravity so if the substance

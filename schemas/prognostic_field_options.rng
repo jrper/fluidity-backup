@@ -297,11 +297,9 @@ time steps are not considered.</a:documentation>
           <attribute name="rank">
             <value>0</value>
           </attribute>
-          <element name="type">
-            <attribute name="name">
-              <value>SourceField</value>
-            </attribute>
-          </element>
+          <attribute name="type">
+            <value>Sources</value>
+          </attribute>
           <choice>
             <element name="prescribed">
               <ref name="prescribed_scalar_field_no_adapt"/>
@@ -337,11 +335,9 @@ time steps are not considered.</a:documentation>
           <attribute name="rank">
             <value>0</value>
           </attribute>
-          <element name="type">
-            <attribute name="name">
-              <value>SourceField</value>
-            </attribute>
-          </element>
+          <attribute name="type">
+            <value>Sources</value>
+          </attribute>
           <choice>
             <element name="prescribed">
               <ref name="prescribed_scalar_field_no_adapt"/>
@@ -367,29 +363,111 @@ is used for the spatial discretisation.</a:documentation>
         </element>
       </choice>
     </zeroOrMore>
-    <optional>
-      <element name="scalar_field">
+    <zeroOrMore>
+      <choice>
         <a:documentation>Absorption term</a:documentation>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>Absorption</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Absorptions</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <attribute name="name">
+            <data type="string" datatypeLibrary=""/>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Absorptions</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+      </choice>
+    </zeroOrMore>
+    <zeroOrMore>
+      <a:documentation>Relaxation term</a:documentation>
+      <element name="relaxation_term">
         <attribute name="name">
-          <value>Absorption</value>
+          <data type="string" datatypeLibrary=""/>
         </attribute>
-        <attribute name="rank">
-          <value>0</value>
-        </attribute>
-        <choice>
-          <element name="prescribed">
-            <ref name="prescribed_scalar_field_no_adapt"/>
-          </element>
-          <element name="diagnostic">
-            <choice>
-              <ref name="scalar_python_diagnostic_algorithm"/>
-              <ref name="internal_algorithm"/>
-            </choice>
-            <ref name="diagnostic_scalar_field_no_adapt"/>
-          </element>
-        </choice>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>RelaxationCoefficent</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>RelaxationCoefficients</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>RelaxationValue</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>RelaxationValues</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
       </element>
-    </optional>
+    </zeroOrMore>
     <optional>
       <element name="scalar_field">
         <a:documentation>Velocity at which this substance sinks through the water column.
