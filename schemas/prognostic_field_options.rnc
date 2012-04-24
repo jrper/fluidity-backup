@@ -289,6 +289,30 @@ prognostic_scalar_field =
             }
          )
       }?,
+      ## Microphysics Forcing Term. Calculated internally.
+      ## 
+      ## Further controls under Microphysics in the embedded models section
+
+      element scalar_field {
+         attribute name { "MicrophysicsSource" },
+         attribute rank { "0" },
+         attribute type { "Sources" },
+         element mesh {
+            attribute name { "MicrophysicsMesh" }
+         },
+         (
+            element prescribed {
+               prescribed_scalar_field_no_adapt
+            }|
+            element diagnostic {
+               (
+                  internal_algorithm |
+                  scalar_python_diagnostic_algorithm
+               ),
+               diagnostic_scalar_field_no_adapt
+            }
+         )
+      }?,
       porosity_include?,
       prognostic_scalar_output_options,
       prognostic_scalar_stat_options,

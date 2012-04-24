@@ -370,6 +370,39 @@ floats or swims upwards, this field should be negative.</a:documentation>
       </element>
     </optional>
     <optional>
+      <element name="scalar_field">
+        <a:documentation>Microphysics Forcing Term. Calculated internally.
+
+Further controls under Microphysics in the embedded models section</a:documentation>
+        <attribute name="name">
+          <value>MicrophysicsSource</value>
+        </attribute>
+        <attribute name="rank">
+          <value>0</value>
+        </attribute>
+        <attribute name="type">
+          <value>Sources</value>
+        </attribute>
+        <element name="mesh">
+          <attribute name="name">
+            <value>MicrophysicsMesh</value>
+          </attribute>
+        </element>
+        <choice>
+          <element name="prescribed">
+            <ref name="prescribed_scalar_field_no_adapt"/>
+          </element>
+          <element name="diagnostic">
+            <choice>
+              <ref name="internal_algorithm"/>
+              <ref name="scalar_python_diagnostic_algorithm"/>
+            </choice>
+            <ref name="diagnostic_scalar_field_no_adapt"/>
+          </element>
+        </choice>
+      </element>
+    </optional>
+    <optional>
       <ref name="porosity_include"/>
     </optional>
     <ref name="prognostic_scalar_output_options"/>
