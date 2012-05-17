@@ -98,7 +98,7 @@ contains
     end if
        
     microphysics_on=have_option("/cloud_microphysics")
-    python_microphysics=.true. !have_option("/cloud_microphysics/python")
+    python_microphysics=.not.have_option("/cloud_microphysics/fortran_microphysics")
 
     if (microphysics_on) then
        if (.not. present(adapt)) then
@@ -306,12 +306,12 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
 
     type microphysics_field
        type(scalar_field), dimension(3) :: data
-       type(scalar_field), pointer :: Forcing, slip_velocity
-       logical :: has_forcing,has_slip_velocity
+       type(scalar_field), pointer :: forcing, sinking_velocity
+       logical :: has_forcing,has_sinking_velocity
     end type microphysics_field
 
     type(microphysics_field) :: pq_v,pq_r,pq_c,pp,prho,pS
-    type(mesh_type) :: mesh
+    type(mesh_type), pointer :: mesh
 
     ! data arrays for the pass into the fortran routine
     ! These have the following order
@@ -327,29 +327,28 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
         
 
 #ifdef FORTRAN_MICROPHYSICS
+#ifndef FORTRAN_MICROPHYSICS_EXAMPLE
     interface 
        subroutine microphysics_main(time,timestep,lq_v,lq_r,lq_c,lp,lrho,lS)
+         implicit none
          real :: time, timestep
-         real, dimension(5) :: lq_v,lq_r,lq_c,p,lrho,lS
+         real, dimension(5) :: lq_v,lq_r,lq_c,lp,lrho,lS
        end subroutine microphysics_main
     end interface
-
+#endif
 
     mesh=>extract_mesh(state(1),"MicrophysicsMesh")
-
-
 
 
     call extract_and_project(state,pq_v, "WaterVapour","MassFraction")
     call extract_and_project(state,pq_c, "CloudWater", "MassFraction")
     call extract_and_project(state,pq_r, "RainWater",  "MassFraction")
-    call extract_and_project(state,pp,   "Bulk",       "Pressure",&
-         forcing=.false.,slip_velocity=.false.)
+    call extract_and_project(state,pp,   "Bulk",       "Pressure")
     call extract_and_project(state,prho, "Bulk",       "Density")
-    call extract_and_project(state,pS,   "Bulk",       "Density",&
+    call extract_and_project(state,pS,   "Bulk",       "Entropy",&
          entropy=.true.)
 
-    do ele=1,node_count(pp)
+    do ele=1,node_count(pp%data(1))
 
        ! Get element arrays
 
@@ -366,19 +365,19 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
        q_v,q_r,q_c,p,rho,S)
 
        !   Call use results
-       call store_result(pp_v,p_v,ele)
-       call store_result(pp_c,p_c,ele)
-       call store_result(pp_r,p_r,ele)
-       call store_result(prho,prho,ele)
+       call store_result(pq_v,q_v,ele)
+       call store_result(pq_c,q_c,ele)
+       call store_result(pq_r,q_r,ele)
+       call store_result(prho,rho,ele)
        call store_result(pS,S,ele)
     end do
 
-    call clean_up(pp_v,p_v)
-    call clean_up(pp_c,p_c)
-    call clean_up(pp_r,p_r)
-    call clean_up(pp,p)
-    call clean_up(prho,prho)
-    call clean_up(pS,S)
+    call clean_up(pq_v)
+    call clean_up(pq_c)
+    call clean_up(pq_r)
+    call clean_up(pp)
+    call clean_up(prho)
+    call clean_up(pS)
 
 #else
     FLAbort("Attempting to call external Fortran Microphysics without a linked external microphysics routine")
@@ -387,17 +386,17 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
   contains 
 
     subroutine extract_and_project(lstate,mfield,material,fname,&
-         forcing,sinking_velocity,entropy)
+        entropy)
       type(state_type), dimension(:), intent(inout) :: lstate
       type(microphysics_field) :: mfield
       type(scalar_field), pointer :: sfield
       type(vector_field), pointer :: X
       character(len=*), intent(in) :: material, fname
 
-      logical, intent(in), optional :: forcing, sinking_velocity,entropy
-      logical :: lforcing=.true.,lsinking_velocity=.true.,lentropy=.true.
+      logical, intent(in), optional :: entropy
+      logical :: lentropy
       
-      integer :: i
+      integer :: i,stat
       type(mesh_type), pointer :: lmesh
 
       character(len=*), dimension(3), parameter::&
@@ -406,9 +405,11 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
                   "        " /)
       
 
-      if (present(entropy)) lentropy=entropy
-      if (present(sinking_velocity)) lsinking_velocity=sinking_velocity
-      if (present(forcing)) lforcing=forcing
+      if (present(entropy)) then
+         lentropy=entropy
+      else
+         lentropy=.false.
+      end if
 
       lmesh=>extract_mesh(lstate(1),"MicrophysicsMesh")
 
@@ -422,30 +423,43 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
             sfield=>extract_scalar_field(extract_state(lstate,material),&
                  trim(old(i))//fname)
          end if
-         call project_field(mfield%data(i),sfield,X)
+         call project_field(sfield,mfield%data(i),X)
       end do
 
-      if (entropy) then
-         if (lforcing) then
-            mfield%forcing=>extract_entropy_variable(state,&
-                 suffix="MicrophysicsForcing")
-         end if
-         if (lsinking_velocity) then
-            mfield%forcing=>extract_entropy_variable(state,&
-                 suffix="SinkingVelocity")
-         end if
+      mfield%has_forcing=.false.
+      mfield%has_sinking_velocity=.false.
+
+      if (lentropy) then
+         mfield%forcing=>extract_entropy_variable(state,&
+              suffix="MicrophysicsSource",stat=stat)
+         if (stat==0) mfield%has_forcing=.true.
+         mfield%sinking_velocity=>extract_entropy_variable(state,&
+              suffix="SinkingVelocity",stat=stat)
+         if (stat==0) mfield%has_sinking_velocity=.true.
       else
-         if (lforcing) then
-            mfield%forcing=>extract_scalar_field(extract_state(state,material),&
-                 "MicrophysicsForcing")
-         end if
-         if (lsinking_velocity) then
-            mfield%forcing=>extract_scalar_field(extract_state(state,material),&
-                 fname//"SinkingVelocity")
-         end if
+         mfield%forcing=>extract_scalar_field(extract_state(state,material),&
+              fname// "MicrophysicsSource",stat=stat)
+         if (stat==0) mfield%has_forcing=.true.
+         mfield%sinking_velocity=>extract_scalar_field(extract_state(state,material),&
+                 fname//"SinkingVelocity",stat=stat)
+            if (stat==0) mfield%has_sinking_velocity=.true.
       end if
 
     end subroutine extract_and_project
+
+    subroutine clean_up(field)
+      type(microphysics_field), intent(inout) :: field
+      integer :: i
+
+      do i=1,size(field%data)
+         call deallocate(field%data(i))
+      end do
+
+      nullify(field%forcing)
+      nullify(field%sinking_velocity)
+         
+    end subroutine clean_up
+
 
     subroutine set_local_array(local_array,fields,lele)
       real, dimension(:), intent(inout) :: local_array
@@ -453,13 +467,75 @@ subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
       integer, intent(in) :: lele
       integer :: i
       
+      local_array=0.0
       do i=1,size(fields%data)
          local_array(i)=node_val(fields%data(i),lele)
       end do
       
     end subroutine set_local_array
 
+    subroutine store_result(field,vloc,n)
+      type(microphysics_field), intent(inout) :: field
+      real, intent(in), dimension(5) :: vloc
+      integer, intent(in) :: n
+
+      if (field%has_sinking_velocity)&
+           call set(field%sinking_velocity,n,vloc(4))
+      if (field%has_forcing)&
+           call set(field%forcing,n,vloc(5))
+
+    end subroutine store_result
+
 end subroutine calculate_microphysics_from_fortran
+
+#ifdef FORTRAN_MICROPHYSICS_EXAMPLE
+
+subroutine microphysics_main(time,timestep,lq_v,lq_r,lq_c,lp,lrho,lS)
+  implicit none
+  real :: time, timestep
+  real, dimension(5) :: lq_v,lq_r,lq_c,lp,lrho,lS
+  
+  real T,q_sat,dq
+  real, parameter :: cv=1000.0, cp=714.,&
+       c_w=4200.0,cv_v=1840.,&
+       cp_v=1380., p0=10000.0,&
+       L_v=2257000.0
+  
+  
+  ! data arrays for the pass into the fortran routine
+  ! These have the following order
+  
+  ! (1) Old Timelevel Value (input, projected)
+  ! (2) Previous nonlinear iteration (input, projected)
+  ! (3) Current nonlinear iteration (input, projected)
+  ! (4) Sinking Velocity (output, on Microphysics mesh)
+  ! (5) Microphysics forcing (output, on Microphysics mesh)
+  
+  T=lS(1)/(cp+(c_w-cp)*(lq_c(1)+lq_r(1))+(cp_v-cp)*lq_v(1))&
+             *(lp(1)/p0)**((cp*(1.0-lq_c(1)-lq_r(1))+(cp_v-cp)*lq_v(1))&
+             /(cv*(1.0-lq_c(1)-lq_r(1))+(cv_v-cv)*lq_v(1)))
+  
+  q_sat=lp(1)*0.18/(lrho(1)*(cp_v-cv_v)*T)
+  
+  if (lq_v(1)>q_sat) then
+     dq=(lq_v(1)-q_sat)/timestep
+  else
+     dq=0
+  end if
+  
+  lq_v(5)=-dq
+  lq_c(5)=dq
+  lq_r(5)=0.0
+
+  lS(5) =L_v*dq
+
+  
+
+
+end subroutine microphysics_main
+
+#endif
+
 
 subroutine calculate_gas_density(state,gas_density)
   type(state_type), intent(in) :: state

@@ -1,0 +1,773 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<fluidity_options>
+    <simulation_name>
+        <string_value lines="1">sym_fixed_Robert_p1_dg_trc_checkpoint</string_value>
+    </simulation_name>
+    <problem_type>
+        <string_value lines="1">fluids</string_value>
+    </problem_type>
+    <geometry>
+        <dimension>
+            <integer_value rank="0">2</integer_value>
+        </dimension>
+        <mesh name="CoordinateMesh">
+            <from_file file_name="sym_fixed_Robert_p1_dg_trc_CoordinateMesh_1_checkpoint">
+                <format name="gmsh"></format>
+                <stat>
+                    <include_in_stat></include_in_stat>
+                </stat>
+            </from_file>
+        </mesh>
+        <mesh name="VelocityMesh">
+            <from_mesh>
+                <mesh name="PeriodicMesh"></mesh>
+                <stat>
+                    <exclude_from_stat></exclude_from_stat>
+                </stat>
+            </from_mesh>
+        </mesh>
+        <mesh name="PressureMesh">
+            <from_mesh>
+                <mesh name="PeriodicMesh"></mesh>
+                <stat>
+                    <exclude_from_stat></exclude_from_stat>
+                </stat>
+            </from_mesh>
+        </mesh>
+        <mesh name="GPMesh">
+            <from_mesh>
+                <mesh name="PeriodicMesh"></mesh>
+                <stat>
+                    <exclude_from_stat></exclude_from_stat>
+                </stat>
+            </from_mesh>
+        </mesh>
+        <mesh name="PeriodicMesh">
+            <from_mesh>
+                <mesh name="CoordinateMesh"></mesh>
+                <stat>
+                    <exclude_from_stat></exclude_from_stat>
+                </stat>
+            </from_mesh>
+        </mesh>
+        <mesh name="TracerMesh">
+            <from_mesh>
+                <mesh name="CoordinateMesh"></mesh>
+                <mesh_continuity>
+                    <string_value>discontinuous</string_value>
+                </mesh_continuity>
+                <stat>
+                    <exclude_from_stat></exclude_from_stat>
+                </stat>
+            </from_mesh>
+        </mesh>
+        <quadrature>
+            <degree>
+                <integer_value rank="0">5</integer_value>
+            </degree>
+        </quadrature>
+    </geometry>
+    <io>
+        <dump_format>
+            <string_value>vtk</string_value>
+        </dump_format>
+        <dump_period>
+            <constant>
+                <real_value rank="0">15</real_value>
+            </constant>
+        </dump_period>
+        <output_mesh name="CoordinateMesh"></output_mesh>
+        <convergence></convergence>
+        <checkpointing>
+            <checkpoint_period_in_dumps>
+                <integer_value rank="0">1000</integer_value>
+            </checkpoint_period_in_dumps>
+            <checkpoint_at_end></checkpoint_at_end>
+        </checkpointing>
+        <stat></stat>
+    </io>
+    <timestepping>
+        <current_time>
+            <real_value rank="0">5</real_value>
+        </current_time>
+        <timestep>
+            <real_value rank="0">5</real_value>
+        </timestep>
+        <finish_time>
+            <real_value rank="0">1080</real_value>
+        </finish_time>
+        <nonlinear_iterations>
+            <integer_value rank="0">20</integer_value>
+            <tolerance>
+                <real_value rank="0">1e-12</real_value>
+                <l2_norm></l2_norm>
+            </tolerance>
+        </nonlinear_iterations>
+    </timestepping>
+    <physical_parameters>
+        <gravity>
+            <magnitude>
+                <real_value rank="0">9.81</real_value>
+            </magnitude>
+            <vector_field name="GravityDirection" rank="1">
+                <prescribed>
+                    <mesh name="CoordinateMesh"></mesh>
+                    <value name="WholeMesh">
+                        <constant>
+                            <real_value rank="1" shape="2" dim1="dim">0 -1</real_value>
+                        </constant>
+                    </value>
+                    <output></output>
+                    <stat>
+                        <include_in_stat></include_in_stat>
+                    </stat>
+                    <detectors>
+                        <exclude_from_detectors></exclude_from_detectors>
+                    </detectors>
+                </prescribed>
+            </vector_field>
+        </gravity>
+    </physical_parameters>
+    <material_phase name="Bulk">
+        <equation_of_state>
+            <compressible>
+                <ATHAM>
+                    <reference_pressure>
+                        <real_value rank="0">100000</real_value>
+                    </reference_pressure>
+                    <C_P>
+                        <real_value rank="0">1000</real_value>
+                    </C_P>
+                    <C_V>
+                        <real_value rank="0">714.285714</real_value>
+                    </C_V>
+                </ATHAM>
+            </compressible>
+        </equation_of_state>
+        <scalar_field name="Pressure" rank="0">
+            <prognostic>
+                <mesh name="PressureMesh"></mesh>
+                <spatial_discretisation>
+                    <continuous_galerkin>
+                        <remove_stabilisation_term></remove_stabilisation_term>
+                    </continuous_galerkin>
+                </spatial_discretisation>
+                <scheme>
+                    <poisson_pressure_solution>
+                        <string_value lines="1">never</string_value>
+                    </poisson_pressure_solution>
+                    <use_compressible_projection_method></use_compressible_projection_method>
+                </scheme>
+                <solver>
+                    <iterative_method name="cg"></iterative_method>
+                    <preconditioner name="eisenstat"></preconditioner>
+                    <relative_error>
+                        <real_value rank="0">1e-10</real_value>
+                    </relative_error>
+                    <absolute_error>
+                        <real_value rank="0">1e-08</real_value>
+                    </absolute_error>
+                    <max_iterations>
+                        <integer_value rank="0">10000</integer_value>
+                    </max_iterations>
+                    <never_ignore_solver_failures></never_ignore_solver_failures>
+                    <diagnostics>
+                        <monitors></monitors>
+                    </diagnostics>
+                </solver>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <galerkin_projection>
+                    <continuous>
+                        <solver>
+                            <iterative_method name="cg"></iterative_method>
+                            <preconditioner name="sor"></preconditioner>
+                            <relative_error>
+                                <real_value rank="0">1e-07</real_value>
+                            </relative_error>
+                            <max_iterations>
+                                <integer_value rank="0">1000</integer_value>
+                            </max_iterations>
+                            <never_ignore_solver_failures></never_ignore_solver_failures>
+                            <diagnostics>
+                                <monitors></monitors>
+                            </diagnostics>
+                        </solver>
+                    </continuous>
+                </galerkin_projection>
+                <initial_condition name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_PressureMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </initial_condition>
+            </prognostic>
+        </scalar_field>
+        <scalar_field name="Density" rank="0">
+            <prognostic>
+                <mesh name="PressureMesh"></mesh>
+                <spatial_discretisation>
+                    <control_volumes>
+                        <face_value name="FiniteElement">
+                            <limit_face_value>
+                                <limiter name="Sweby"></limiter>
+                            </limit_face_value>
+                        </face_value>
+                    </control_volumes>
+                    <conservative_advection>
+                        <real_value rank="0">1</real_value>
+                    </conservative_advection>
+                </spatial_discretisation>
+                <temporal_discretisation>
+                    <theta>
+                        <real_value rank="0">1</real_value>
+                    </theta>
+                </temporal_discretisation>
+                <solver>
+                    <iterative_method name="cg"></iterative_method>
+                    <preconditioner name="eisenstat"></preconditioner>
+                    <relative_error>
+                        <real_value rank="0">1e-07</real_value>
+                    </relative_error>
+                    <max_iterations>
+                        <integer_value rank="0">1000</integer_value>
+                    </max_iterations>
+                    <never_ignore_solver_failures></never_ignore_solver_failures>
+                    <diagnostics>
+                        <monitors></monitors>
+                    </diagnostics>
+                </solver>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <galerkin_projection>
+                    <continuous>
+                        <solver>
+                            <iterative_method name="cg"></iterative_method>
+                            <preconditioner name="sor"></preconditioner>
+                            <relative_error>
+                                <real_value rank="0">1e-07</real_value>
+                            </relative_error>
+                            <max_iterations>
+                                <integer_value rank="0">1000</integer_value>
+                            </max_iterations>
+                            <never_ignore_solver_failures></never_ignore_solver_failures>
+                            <diagnostics>
+                                <monitors></monitors>
+                            </diagnostics>
+                        </solver>
+                    </continuous>
+                </galerkin_projection>
+                <initial_condition name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_PressureMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </initial_condition>
+            </prognostic>
+        </scalar_field>
+        <vector_field name="Velocity" rank="1">
+            <prognostic>
+                <mesh name="VelocityMesh"></mesh>
+                <equation name="LinearMomentum"></equation>
+                <spatial_discretisation>
+                    <continuous_galerkin>
+                        <stabilisation>
+                            <no_stabilisation></no_stabilisation>
+                        </stabilisation>
+                        <mass_terms>
+                            <lump_mass_matrix></lump_mass_matrix>
+                        </mass_terms>
+                        <advection_terms></advection_terms>
+                        <stress_terms>
+                            <tensor_form></tensor_form>
+                        </stress_terms>
+                    </continuous_galerkin>
+                    <conservative_advection>
+                        <real_value rank="0">0</real_value>
+                    </conservative_advection>
+                </spatial_discretisation>
+                <temporal_discretisation>
+                    <theta>
+                        <real_value rank="0">1</real_value>
+                    </theta>
+                    <relaxation>
+                        <real_value rank="0">1</real_value>
+                    </relaxation>
+                </temporal_discretisation>
+                <solver>
+                    <iterative_method name="gmres">
+                        <restart>
+                            <integer_value rank="0">30</integer_value>
+                        </restart>
+                    </iterative_method>
+                    <preconditioner name="eisenstat"></preconditioner>
+                    <relative_error>
+                        <real_value rank="0">1e-07</real_value>
+                    </relative_error>
+                    <absolute_error>
+                        <real_value rank="0">1e-08</real_value>
+                    </absolute_error>
+                    <max_iterations>
+                        <integer_value rank="0">10000</integer_value>
+                    </max_iterations>
+                    <never_ignore_solver_failures></never_ignore_solver_failures>
+                    <diagnostics>
+                        <monitors></monitors>
+                    </diagnostics>
+                </solver>
+                <boundary_conditions name="nnf_top_bottom">
+                    <surface_ids>
+                        <integer_value rank="1" shape="2">10 11</integer_value>
+                    </surface_ids>
+                    <type name="dirichlet">
+                        <align_bc_with_cartesian>
+                            <y_component>
+                                <constant>
+                                    <real_value rank="0">0</real_value>
+                                </constant>
+                            </y_component>
+                            <x_component>
+                                <constant>
+                                    <real_value rank="0">0</real_value>
+                                </constant>
+                            </x_component>
+                        </align_bc_with_cartesian>
+                    </type>
+                </boundary_conditions>
+                <tensor_field name="Viscosity" rank="2">
+                    <prescribed>
+                        <value name="WholeMesh">
+                            <isotropic>
+                                <constant>
+                                    <real_value rank="0">0.01</real_value>
+                                </constant>
+                            </isotropic>
+                        </value>
+                        <output></output>
+                    </prescribed>
+                </tensor_field>
+                <output></output>
+                <stat>
+                    <include_in_stat></include_in_stat>
+                    <previous_time_step>
+                        <exclude_from_stat></exclude_from_stat>
+                    </previous_time_step>
+                    <nonlinear_field>
+                        <exclude_from_stat></exclude_from_stat>
+                    </nonlinear_field>
+                </stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <consistent_interpolation></consistent_interpolation>
+                <initial_condition name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_VelocityMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </initial_condition>
+            </prognostic>
+        </vector_field>
+        <scalar_field name="PotentialTemperature" rank="0">
+            <prognostic>
+                <mesh name="TracerMesh"></mesh>
+                <equation name="AdvectionDiffusion"></equation>
+                <spatial_discretisation>
+                    <discontinuous_galerkin>
+                        <advection_scheme>
+                            <upwind></upwind>
+                            <integrate_advection_by_parts>
+                                <twice></twice>
+                            </integrate_advection_by_parts>
+                        </advection_scheme>
+                        <diffusion_scheme>
+                            <compact_discontinuous_galerkin></compact_discontinuous_galerkin>
+                        </diffusion_scheme>
+                    </discontinuous_galerkin>
+                    <conservative_advection>
+                        <real_value rank="0">0</real_value>
+                    </conservative_advection>
+                </spatial_discretisation>
+                <temporal_discretisation>
+                    <theta>
+                        <real_value rank="0">0.5</real_value>
+                    </theta>
+                    <discontinuous_galerkin>
+                        <maximum_courant_number_per_subcycle>
+                            <real_value rank="0">0.2</real_value>
+                        </maximum_courant_number_per_subcycle>
+                    </discontinuous_galerkin>
+                </temporal_discretisation>
+                <solver>
+                    <iterative_method name="gmres">
+                        <restart>
+                            <integer_value rank="0">30</integer_value>
+                        </restart>
+                    </iterative_method>
+                    <preconditioner name="sor"></preconditioner>
+                    <relative_error>
+                        <real_value rank="0">1e-07</real_value>
+                    </relative_error>
+                    <max_iterations>
+                        <integer_value rank="0">1000</integer_value>
+                    </max_iterations>
+                    <never_ignore_solver_failures></never_ignore_solver_failures>
+                    <diagnostics>
+                        <monitors></monitors>
+                    </diagnostics>
+                </solver>
+                <scalar_field name="Source" type="Sources" rank="0">
+                    <diagnostic>
+                        <algorithm name="Internal" material_phase_support="multiple"></algorithm>
+                        <output></output>
+                        <stat></stat>
+                        <detectors>
+                            <include_in_detectors></include_in_detectors>
+                        </detectors>
+                    </diagnostic>
+                </scalar_field>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <consistent_interpolation></consistent_interpolation>
+                <initial_condition name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_TracerMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </initial_condition>
+            </prognostic>
+        </scalar_field>
+        <scalar_field name="ycoord" rank="0">
+            <prescribed>
+                <mesh name="PressureMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+                <galerkin_projection>
+                    <continuous>
+                        <solver>
+                            <iterative_method name="cg"></iterative_method>
+                            <preconditioner name="sor"></preconditioner>
+                            <relative_error>
+                                <real_value rank="0">1e-07</real_value>
+                            </relative_error>
+                            <max_iterations>
+                                <integer_value rank="0">1000</integer_value>
+                            </max_iterations>
+                            <never_ignore_solver_failures></never_ignore_solver_failures>
+                            <diagnostics>
+                                <monitors></monitors>
+                            </diagnostics>
+                        </solver>
+                    </continuous>
+                </galerkin_projection>
+                <value name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_PressureMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </value>
+            </prescribed>
+        </scalar_field>
+        <scalar_field name="density_pert" rank="0">
+            <diagnostic>
+                <algorithm name="scalar_python_diagnostic" material_phase_support="single">
+                    <string_value lines="20" type="code" language="python">y=state.scalar_fields[&quot;ycoorddmesh&quot;]&#x0A;u=state.vector_fields[&quot;Velocity&quot;]&#x0A;pres=state.scalar_fields[&quot;Pressure&quot;]&#x0A;dens=state.scalar_fields[&quot;Density&quot;]&#x0A;&#x0A;from math import sqrt, sin, cos, atan2, acos, asin, pi, exp&#x0A;from numpy import *&#x0A;&#x0A;d_pert=zeros(field.node_count)&#x0A;u_node=zeros(2)&#x0A;&#x0A;p0=1.0e5&#x0A;cp=1000.0&#x0A;cv=714.285714&#x0A;R=cp-cv&#x0A;g=9.81&#x0A;import ICs&#x0A;&#x0A;for n in range(field.node_count):&#x0A;  h=y.node_val(n)&#x0A;  density=dens.node_val(n)&#x0A;  d_pert[n] = density-ICs.rho0((0,h))&#x0A;&#x0A;for n in range(field.node_count):&#x0A;  field.set(n,d_pert[n])</string_value>
+                </algorithm>
+                <mesh name="PressureMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <adaptivity_options>
+                    <absolute_measure>
+                        <scalar_field name="InterpolationErrorBound" rank="0">
+                            <prescribed>
+                                <value name="WholeMesh">
+                                    <constant>
+                                        <real_value rank="0">0.0008</real_value>
+                                    </constant>
+                                </value>
+                                <output></output>
+                                <stat></stat>
+                                <detectors>
+                                    <exclude_from_detectors></exclude_from_detectors>
+                                </detectors>
+                            </prescribed>
+                        </scalar_field>
+                    </absolute_measure>
+                </adaptivity_options>
+            </diagnostic>
+        </scalar_field>
+        <scalar_field name="CFLNumber" rank="0">
+            <diagnostic>
+                <algorithm name="Internal" material_phase_support="multiple"></algorithm>
+                <mesh name="VelocityMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+                <consistent_interpolation></consistent_interpolation>
+            </diagnostic>
+        </scalar_field>
+        <scalar_field name="HydroStaticBalancePressure" rank="0">
+            <prescribed>
+                <mesh name="PressureMesh"></mesh>
+                <value name="WholeMesh">
+                    <python>
+                        <string_value lines="20" type="code" language="python">def val(X,t):&#x0A;  import ICs&#x0A;  return ICs.p((0,X[1]))</string_value>
+                    </python>
+                </value>
+                <output></output>
+                <stat></stat>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+            </prescribed>
+        </scalar_field>
+        <scalar_field name="HydroStaticBalanceDensity" rank="0">
+            <prescribed>
+                <mesh name="GPMesh"></mesh>
+                <value name="WholeMesh">
+                    <python>
+                        <string_value lines="20" type="code" language="python">def val(X,t):&#x0A;  import ICs&#x0A;  return ICs.rho((0,X[1]))</string_value>
+                    </python>
+                </value>
+                <output></output>
+                <stat></stat>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+            </prescribed>
+        </scalar_field>
+        <scalar_field name="PressurePert" rank="0">
+            <diagnostic>
+                <algorithm name="scalar_python_diagnostic" material_phase_support="single">
+                    <string_value lines="20" type="code" language="python">yy=state.scalar_fields[&apos;ycoord&apos;]&#x0A;pp=state.scalar_fields[&apos;Pressure&apos;]&#x0A;&#x0A;import ICs&#x0A;import numpy&#x0A;&#x0A;&#x0A;&#x0A;rr=range(pp.node_count)&#x0A;hp=[]&#x0A;&#x0A;for r in rr:&#x0A;  hp.append(ICs.p((0,yy[r])))&#x0A;  &#x0A;for r in rr:&#x0A;    field[r]=pp[r]-hp[r]</string_value>
+                </algorithm>
+                <mesh name="PressureMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+            </diagnostic>
+        </scalar_field>
+        <scalar_field name="ycoorddmesh" rank="0">
+            <prescribed>
+                <mesh name="PressureMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+                <consistent_interpolation></consistent_interpolation>
+                <value name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_Bulk_PressureMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </value>
+            </prescribed>
+        </scalar_field>
+        <scalar_field name="DG_CourantNumber" rank="0">
+            <diagnostic>
+                <algorithm name="Internal" material_phase_support="multiple"></algorithm>
+                <mesh name="VelocityMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <convergence>
+                    <include_in_convergence></include_in_convergence>
+                </convergence>
+                <detectors>
+                    <include_in_detectors></include_in_detectors>
+                </detectors>
+                <steady_state>
+                    <include_in_steady_state></include_in_steady_state>
+                </steady_state>
+            </diagnostic>
+        </scalar_field>
+    </material_phase>
+    <material_phase name="WaterVapour">
+        <equation_of_state>
+            <compressible>
+                <ATHAM>
+                    <reference_pressure>
+                        <real_value rank="0">100000</real_value>
+                    </reference_pressure>
+                    <C_P>
+                        <real_value rank="0">1840</real_value>
+                    </C_P>
+                    <C_V>
+                        <real_value rank="0">1380</real_value>
+                    </C_V>
+                </ATHAM>
+            </compressible>
+        </equation_of_state>
+        <scalar_field name="Density" rank="0">
+            <aliased material_phase_name="Bulk" field_name="Density"></aliased>
+        </scalar_field>
+        <vector_field name="Velocity" rank="1">
+            <aliased material_phase_name="Bulk" field_name="Velocity"></aliased>
+        </vector_field>
+        <scalar_field name="MassFraction" rank="0">
+            <prescribed>
+                <mesh name="VelocityMesh"></mesh>
+                <output></output>
+                <stat></stat>
+                <detectors>
+                    <exclude_from_detectors></exclude_from_detectors>
+                </detectors>
+                <consistent_interpolation></consistent_interpolation>
+                <value name="WholeMesh">
+                    <from_file file_name="sym_fixed_Robert_p1_dg_trc_WaterVapour_VelocityMesh_1_checkpoint.vtu">
+                        <format name="vtu"></format>
+                    </from_file>
+                </value>
+            </prescribed>
+        </scalar_field>
+    </material_phase>
+    <mesh_adaptivity>
+        <hr_adaptivity>
+            <period_in_timesteps>
+                <integer_value rank="0">10000000</integer_value>
+            </period_in_timesteps>
+            <maximum_number_of_nodes>
+                <integer_value rank="0">10000</integer_value>
+            </maximum_number_of_nodes>
+            <disable_gradation></disable_gradation>
+            <tensor_field name="MinimumEdgeLengths">
+                <anisotropic_symmetric>
+                    <constant>
+                        <real_value rank="2" shape="2 2" symmetric="true" dim2="dim" dim1="dim">0.01 0 0 0.01</real_value>
+                    </constant>
+                </anisotropic_symmetric>
+            </tensor_field>
+            <tensor_field name="MaximumEdgeLengths">
+                <anisotropic_symmetric>
+                    <constant>
+                        <real_value rank="2" shape="2 2" symmetric="true" dim2="dim" dim1="dim">0.1 0 0 0.1</real_value>
+                    </constant>
+                </anisotropic_symmetric>
+            </tensor_field>
+            <adaptivity_library>
+                <libmba2d>
+                    <quality>
+                        <real_value rank="0">0.1</real_value>
+                    </quality>
+                </libmba2d>
+            </adaptivity_library>
+        </hr_adaptivity>
+    </mesh_adaptivity>
+    <solver_options>
+        <scalar_field name="qc_p">
+            <solver>
+                <iterative_method name="gmres"></iterative_method>
+                <preconditioner name="sor"></preconditioner>
+                <relative_error>
+                    <real_value rank="0">1e-07</real_value>
+                </relative_error>
+                <max_iterations>
+                    <integer_value rank="0">10000</integer_value>
+                </max_iterations>
+            </solver>
+        </scalar_field>
+        <scalar_field name="qc_v">
+            <solver>
+                <iterative_method name="gmres"></iterative_method>
+                <preconditioner name="sor"></preconditioner>
+                <relative_error>
+                    <real_value rank="0">1e-07</real_value>
+                </relative_error>
+                <max_iterations>
+                    <integer_value rank="0">10000</integer_value>
+                </max_iterations>
+            </solver>
+        </scalar_field>
+        <scalar_field name="qc_solid">
+            <solver>
+                <iterative_method name="gmres"></iterative_method>
+                <preconditioner name="sor"></preconditioner>
+                <relative_error>
+                    <real_value rank="0">1e-07</real_value>
+                </relative_error>
+                <max_iterations>
+                    <integer_value rank="0">10000</integer_value>
+                </max_iterations>
+            </solver>
+        </scalar_field>
+        <scalar_field name="scaledp">
+            <solver>
+                <iterative_method name="gmres"></iterative_method>
+                <preconditioner name="sor"></preconditioner>
+                <relative_error>
+                    <real_value rank="0">1e-07</real_value>
+                </relative_error>
+                <max_iterations>
+                    <integer_value rank="0">10000</integer_value>
+                </max_iterations>
+            </solver>
+        </scalar_field>
+        <scalar_field name="RemeshedPotentialTemperature">
+            <solver>
+                <iterative_method name="gmres"></iterative_method>
+                <preconditioner name="sor"></preconditioner>
+                <relative_error>
+                    <real_value rank="0">1e-07</real_value>
+                </relative_error>
+                <max_iterations>
+                    <integer_value rank="0">10000</integer_value>
+                </max_iterations>
+            </solver>
+        </scalar_field>
+    </solver_options>
+</fluidity_options>

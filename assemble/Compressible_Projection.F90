@@ -1130,6 +1130,8 @@ contains
     sfield=>extract_scalar_field(state(1),"InternalEnergy",stat)
     if (stat/=0) &
          sfield=>extract_scalar_field(state(1),"PotentialTemperature",stat)
+    if (stat/=0) &
+         sfield=>extract_scalar_field(state(1),"ATHAMInternalEnergy",stat)
     if (have_option(trim(sfield%option_path)//"/prognostic/initial_condition")) then
        ic_count=ic_count+2
     end if

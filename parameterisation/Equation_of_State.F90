@@ -927,6 +927,8 @@ contains
     if (stat /= 0) &
          thermal=>extract_scalar_field(state(1),"PotentialTemperature",stat=stat)
     if (stat /= 0) &
+         thermal=>extract_scalar_field(state(1),"ATHAMInternalEnergy",stat=stat)
+    if (stat /= 0) &
          FLAbort("Can't find thermodynamic variable in state!")
 
 
@@ -1066,6 +1068,10 @@ contains
        thermal_variable=2
        thermal=>extract_scalar_field(state(1),trim(old)//'PotentialTemperature',&
             stat=stat)
+    else if (has_scalar_field(state(1),'ATHAMInternalEnergy')) then
+       thermal_variable=3
+       thermal=>extract_scalar_field(state(1),trim(old)//'ATHAMInternalEnergy',&
+            stat=stat)
     else
        FLAbort("No thermodynamic variable in bulk state for ATHAM EoS!")
     end if
@@ -1140,7 +1146,7 @@ contains
               call set(p,node,p_node)
            end do
         case(2)
-
+           
            call allocate(rhs,p%mesh,"RHS")
 
            do node=1,node_count(p)
@@ -1163,6 +1169,60 @@ contains
 
                  temp_node=rho_node*(qc_p_node-qc_v_node)&
                    *(qc_p_node+qc_solid_node)&
+                   *TV_node/(1.0-rho_node*scaledq_node)
+                 fp_node=p_node*((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
+                      *qc_p_node+qc_solid_node)
+
+
+                 do nlin=1,200
+                    p_node=p_node&
+                         -(fp_node-temp_node)&
+                         /((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
+                         *qc_v_node+qc_solid_node)
+                    
+                    fp_node=p_node*((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
+                         *qc_p_node+qc_solid_node)
+                    
+                    if (sqrt((fp_node-temp_node)**2)<1.0e-10) then
+                       exit
+                    end if
+                 
+                 
+                 end do
+              end if
+              call set(p,node,p_node)
+              call set(rhs,node,temp_node)
+
+
+           end do
+
+!           call petsc_solve_nonlinear(p,func,dfuncdx)
+
+           call deallocate(rhs)
+
+        case(3)
+
+           call allocate(rhs,p%mesh,"RHS")
+
+           do node=1,node_count(p)
+
+              TV_node=node_val(TV,node)
+              rho_node=node_val(rho,node)
+              qc_p_node=node_val(qc_p,node)
+              qc_v_node=node_val(qc_v,node)
+              qc_solid_node=node_val(qc_solid,node)
+              scaledq_node=node_val(scaledq,node)
+
+
+
+              p_node=p0**(-(qc_p_node-qc_v_node)/qc_v_node)&
+                      *(rho_node*(qc_p_node-qc_v_node)*TV_node/(qc_p_node+qc_solid_node))&
+                      **(qc_p_node/qc_v_node)
+
+              if (abs(scaledq_node)>1e-8) then
+
+
+                 temp_node=rho_node*(qc_p_node-qc_v_node)&
                    *TV_node/(1.0-rho_node*scaledq_node)
                  fp_node=p_node*((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
                       *qc_p_node+qc_solid_node)
@@ -1291,6 +1351,26 @@ contains
               call set(rho,node,rho_node)
 
            end do
+        case(3)
+           do node=1,node_count(rho)
+              TV_node=node_val(TV,node)
+              p_node=node_val(p,node)
+              qc_p_node=node_val(qc_p,node)
+              qc_v_node=node_val(qc_v,node)
+              qc_solid_node=node_val(qc_solid,node)
+              scaledq_node=node_val(scaledq,node)
+
+              rho_node=p_node*((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
+                      *qc_p_node+qc_solid_node)&
+                   /((qc_p_node-qc_v_node)*TV_node&
+                   +p_node*scaledq_node&
+                   *((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
+                      *qc_p_node+qc_solid_node))
+              
+              call set(rho,node,rho_node)
+
+           end do
+
         end select
 
       end subroutine density_atham
@@ -1319,6 +1399,24 @@ contains
 
               temp_node=TV_node&
                    *(qc_p_node+qc_solid_node)&
+                   /((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)*qc_p_node&
+                   +qc_solid_node)
+                   
+
+              call set(T,node,temp_node)
+              
+           end do
+        case(3)
+
+           do node=1,node_count(T)
+
+              TV_node=node_val(TV,node)
+              p_node=node_val(p,node)
+              qc_p_node=node_val(qc_p,node)
+              qc_v_node=node_val(qc_v,node)
+              qc_solid_node=node_val(qc_solid,node)
+
+              temp_node=TV_node&
                    /((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)*qc_p_node&
                    +qc_solid_node)
                    
@@ -1356,8 +1454,6 @@ contains
 
               call set(drhodp, node, drhodp_node)
            end do
-          
-
         case(2)
            do node=1,node_count(drhodp)
 
@@ -1374,6 +1470,27 @@ contains
               drhodp_node=(temp_node*qc_v_node+qc_solid_node)*(qc_p_node-qc_v_node)&
                    *(qc_p_node+qc_solid_node)*TV_node&
                    /((qc_p_node-qc_v_node)*(qc_p_node+qc_solid_node)*TV_node&
+                   +p_node*(temp_node*qc_p_node+qc_solid_node)*scaledq_node)**2
+
+              call set(drhodp, node, drhodp_node)
+           end do
+
+        case(3)
+           do node=1,node_count(drhodp)
+
+
+              TV_node=node_val(TV,node)
+              rho_node=node_val(rho,node)
+              p_node=node_val(p,node)
+              qc_p_node=node_val(qc_p,node)
+              qc_v_node=node_val(qc_v,node)
+              qc_solid_node=node_val(qc_solid,node)
+              scaledq_node=node_val(scaledq,node)
+
+              temp_node=(p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)
+              drhodp_node=(temp_node*qc_v_node+qc_solid_node)*(qc_p_node-qc_v_node)&
+                   *TV_node&
+                   /((qc_p_node-qc_v_node)*TV_node&
                    +p_node*(temp_node*qc_p_node+qc_solid_node)*scaledq_node)**2
 
               call set(drhodp, node, drhodp_node)
@@ -2075,6 +2192,8 @@ subroutine assemble_pressure_matrix(ele,M,rhs,x,&
        if (stat /= 0) &
             thermal=>extract_scalar_field(state(1),"PotentialTemperature",stat=stat)
        if (stat /= 0) &
+            thermal=>extract_scalar_field(state(1),"ATHAMInternalEnergy",stat=stat)
+       if (stat /= 0) &
             FLAbort("Can't find thermodynamic variable in state!")
     end if
 
@@ -2125,19 +2244,21 @@ subroutine assemble_pressure_matrix(ele,M,rhs,x,&
 
   end subroutine set_EOS_pressure_and_temperature
 
-  function extract_entropy_variable(states,prefix,suffix) result(sfield)
+  function extract_entropy_variable(states,prefix,suffix,stat) result(sfield)
     type(state_type), dimension(:) :: states
     character(len=*), optional :: prefix, suffix
     type(scalar_field), pointer :: sfield
+    integer, optional :: stat
 
 
     character(len=OPTION_PATH_LEN) ::lprefix,lsuffix
-    integer :: i,j,stat
+    integer :: i,j,lstat
 
-    character(len=*), dimension(3), parameter ::&
+    character(len=*), dimension(4), parameter ::&
          entropy_names= (/ "PotentialTemperature",&
                            "InternalEnergy      ",&
-                           "Temperature         "/)
+                           "Temperature         ",&
+                           "ATHAMInternalEnergy "/)
 
     ! Routine searches (in order) for one of the entropy names above 
     ! in the states given to it, then returns the field
@@ -2156,11 +2277,14 @@ subroutine assemble_pressure_matrix(ele,M,rhs,x,&
 
     do j=1,size(entropy_names)
        sfield=>extract_scalar_field(states,&
-            trim(lprefix)//trim(entropy_names(j))//trim(lsuffix),stat=stat)
-       if (stat==0) return
+            trim(lprefix)//trim(entropy_names(j))//trim(lsuffix),stat=lstat)
+       if (present(stat)) stat=lstat
+       if (lstat==0) return
     end do
-
-    FLAbort('Failed to find entropy field when using Atham Equation of state')
+    
+    if (.not. present(stat)) then 
+       FLAbort('Failed to find entropy field when using Atham Equation of state')
+    end if
 
   end function extract_entropy_variable
 
