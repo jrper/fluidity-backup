@@ -291,17 +291,20 @@ contains
         ! first we keep a copy of meshes_new
         do field=1,scalar_field_count(meshes_new(mesh))
           field_s => extract_scalar_field(meshes_new(mesh), field)
-          call insert(periodic_new(mesh), field_s, trim(field_s%name))
+          call insert(periodic_new(mesh), field_s,&
+               trim(meshes_new(mesh)%scalar_names(field)))
         end do
 
         do field=1,vector_field_count(meshes_new(mesh))
           field_v => extract_vector_field(meshes_new(mesh), field)
-          call insert(periodic_new(mesh), field_v, trim(field_v%name))
+          call insert(periodic_new(mesh), field_v,&
+               trim(meshes_new(mesh)%vector_names(field)))
         end do
 
         do field=1,tensor_field_count(meshes_new(mesh))
           field_t => extract_tensor_field(meshes_new(mesh), field)
-          call insert(periodic_new(mesh), field_t, trim(field_t%name))
+          call insert(periodic_new(mesh), field_t,&
+               trim(meshes_new(mesh)%tensor_names(field)))
         end do
 
         ! create an expanded, non-periodic version of meshes_old
@@ -467,7 +470,8 @@ contains
         ! So let's remap to the periodic one we actually need
         do field=1,scalar_field_count(meshes_new(mesh))
           field_s => extract_scalar_field(meshes_new(mesh), field)
-          p_field_s => extract_scalar_field(periodic_new(mesh), trim(field_s%name))
+          p_field_s => extract_scalar_field(periodic_new(mesh),&
+               trim(meshes_new(mesh)%scalar_names(field)))
           assert(trim(field_s%name) == trim(p_field_s%name))
           call remap_field(field_s, p_field_s, stat=stat)
         end do
@@ -475,14 +479,16 @@ contains
         do field=1,vector_field_count(meshes_new(mesh))
           field_v => extract_vector_field(meshes_new(mesh), field)
           if (trim(field_v%name) == "Coordinate") cycle
-          p_field_v => extract_vector_field(periodic_new(mesh), trim(field_v%name))
+          p_field_v => extract_vector_field(periodic_new(mesh),&
+               trim(meshes_new(mesh)%vector_names(field)))
           assert(trim(field_v%name) == trim(p_field_v%name))
           call remap_field(field_v, p_field_v, stat=stat)
         end do
 
         do field=1,tensor_field_count(meshes_new(mesh))
           field_t => extract_tensor_field(meshes_new(mesh), field)
-          p_field_t => extract_tensor_field(periodic_new(mesh), trim(field_t%name))
+          p_field_t => extract_tensor_field(periodic_new(mesh),&
+               trim(meshes_new(mesh)%tensor_names(field)))
           assert(trim(field_t%name) == trim(p_field_t%name))
           call remap_field(field_t, p_field_t, stat=stat)
         end do
@@ -795,6 +801,7 @@ contains
     integer :: j, node, total_multiple
 
     type(state_type) :: unwrapped_state
+    character(len=FIELD_NAME_LEN) :: field_name
 
     integer :: dim
 
@@ -880,26 +887,29 @@ contains
         
     ! Let's unwrap everything and put it into the unwrapped_state.
     do field=1,scalar_field_count(mesh_old)
+      field_name=mesh_old%scalar_names(field)
       p_field_s => extract_scalar_field(mesh_old, field)
       call allocate(field_s, old_mesh_unperiodic, trim(p_field_s%name))
       call remap_field(p_field_s, field_s)
-      call insert(unwrapped_state, field_s, trim(p_field_s%name))
+      call insert(unwrapped_state, field_s, field_name)
       call deallocate(field_s)
     end do
 
     do field=1,vector_field_count(mesh_old)
+      field_name=mesh_old%vector_names(field)
       p_field_v => extract_vector_field(mesh_old, field)
       call allocate(field_v, p_field_v%dim, old_mesh_unperiodic, trim(p_field_v%name))
       call remap_field(p_field_v, field_v)
-      call insert(unwrapped_state, field_v, trim(p_field_v%name))
+      call insert(unwrapped_state, field_v,field_name)
       call deallocate(field_v)
     end do
 
     do field=1,tensor_field_count(mesh_old)
+      field_name=mesh_old%tensor_names(field)
       p_field_t => extract_tensor_field(mesh_old, field)
       call allocate(field_t, old_mesh_unperiodic, trim(p_field_t%name))
       call remap_field(p_field_t, field_t)
-      call insert(unwrapped_state, field_t, trim(p_field_t%name))
+      call insert(unwrapped_state, field_t,field_name)
       call deallocate(field_t)
     end do
 
@@ -907,8 +917,9 @@ contains
     ! in mesh_old states
     
     do field=1,scalar_field_count(mesh_old)
+      field_name=mesh_old%scalar_names(field)
       p_field_s => extract_scalar_field(mesh_old, field)
-      u_field_s => extract_scalar_field(unwrapped_state, trim(p_field_s%name))
+      u_field_s => extract_scalar_field(unwrapped_state,trim(field_name))
       call allocate(field_s, old_mesh_expanded, trim(p_field_s%name))
       field_s%option_path = p_field_s%option_path
       do node=1,node_count(u_field_s)
@@ -916,16 +927,17 @@ contains
           call set(field_s, node + j*node_count(u_field_s), node_val(u_field_s, node))
         end do
       end do
-      call insert(mesh_old, field_s, trim(mesh_old%scalar_names(field)))
+      call insert(mesh_old, field_s,trim(field_name))
       call deallocate(field_s)
     end do
 
     do field=1,vector_field_count(mesh_old)
+      field_name=mesh_old%vector_names(field)
       p_field_v => extract_vector_field(mesh_old, field)
       if (trim(p_field_v%name) == "Coordinate") then
         cycle
       end if
-      u_field_v => extract_vector_field(unwrapped_state, trim(p_field_v%name))
+      u_field_v => extract_vector_field(unwrapped_state, trim(field_name))
       call allocate(field_v, p_field_v%dim, old_mesh_expanded, trim(p_field_v%name))
       field_v%option_path = p_field_v%option_path
       do node=1,node_count(u_field_v)
@@ -933,13 +945,14 @@ contains
           call set(field_v, node + j*node_count(u_field_v), node_val(u_field_v, node))
         end do
       end do
-      call insert(mesh_old, field_v, trim(mesh_old%vector_names(field)))
+      call insert(mesh_old, field_v, trim(field_name))
       call deallocate(field_v)
     end do
 
     do field=1,tensor_field_count(mesh_old)
+      field_name=mesh_old%tensor_names(field)
       p_field_t => extract_tensor_field(mesh_old, field)
-      u_field_t => extract_tensor_field(unwrapped_state, trim(p_field_t%name))
+      u_field_t => extract_tensor_field(unwrapped_state, trim(field_name))
       call allocate(field_t, old_mesh_expanded, trim(p_field_t%name))
       field_t%option_path = p_field_t%option_path
       do node=1,node_count(u_field_t)
@@ -947,7 +960,7 @@ contains
           call set(field_t, node + j*node_count(u_field_t), node_val(u_field_t, node))
         end do
       end do
-      call insert(mesh_old, field_t, trim(mesh_old%tensor_names(field)))
+      call insert(mesh_old, field_t, trim(field_name))
       call deallocate(field_t)
     end do
       

@@ -386,6 +386,9 @@ module conservative_interpolation_module
         do field = 1, field_counts(mesh)
           old_fields(mesh, field) = extract_scalar_field(old_fields_state(mesh), field)
           new_fields(mesh, field) = extract_scalar_field(new_fields_state(mesh), field)
+
+          print*, new_fields(mesh, field)%name
+
           call zero(new_fields(mesh, field))
           bounded(mesh, field) = l_force_bounded.or.&
                           have_option(trim(complete_field_path(new_fields(mesh,field)%option_path, stat=statp)) // &

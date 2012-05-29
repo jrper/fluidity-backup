@@ -639,7 +639,8 @@ contains
           end if
 
           if (have_cloud_microphysics) then
-             call calculate_microphysics_forcings(state,current_time,dt)
+             if (nonlinear_iterations==1) &
+                  call calculate_microphysics_forcings(state,current_time,dt)
           end if
           field_loop: do it = 1, ntsol
              ewrite(2, "(a,i0,a,i0)") "Considering scalar field ", it, " of ", ntsol
