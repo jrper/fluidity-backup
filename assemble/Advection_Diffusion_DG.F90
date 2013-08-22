@@ -751,7 +751,8 @@ contains
     type(scalar_field) :: porosity_theta
     
     !! Add the Source directly to the right hand side?
-    logical :: add_src_directly_to_rhs
+    logical :: add_src_directly_to_rhs, clean_up
+
 
     ewrite(1,*) "Writing advection-diffusion equation for "&
          &//trim(field_name)
@@ -904,6 +905,10 @@ contains
        if (stat /= 0) then 
           energy_density=>extract_scalar_field(state,"Density",stat=stat)
           old_energy_density=>extract_scalar_field(state,"Density",stat=stat)
+       end if
+       if (stat /= 0) then
+          energy_density=>extract_scalar_field(state, field_name,stat=stat)
+          old_energy_density=>extract_scalar_field(state, field_name,stat=stat)
        end if
     end if
 
@@ -1375,6 +1380,7 @@ contains
     ! Transform U_nl derivatives and weights into physical space.
     call transform_to_physical(X,ele,&
          & u_shape , dshape=du_t)
+
 
     call transform_to_physical(X,ele,&
          & en_den_shape , dshape=ded_t)
