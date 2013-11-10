@@ -329,7 +329,7 @@ module hydrostatic_pressure
     
     call petsc_solve(hp, matrix, rhs)
 
-    if (.true.) then
+    if (.false.) then
        !< Let the hydrostatic pressure also contain the thermodynamic component
 
        call addto(hp,-mean(hp))
