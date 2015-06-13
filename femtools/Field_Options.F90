@@ -39,7 +39,7 @@ module field_options
    use fields_allocates
    use fields_manipulation
    use fields_calculations
-   use Global_Parameters, only: new_options, OPTION_PATH_LEN, adaptivity_mesh_name
+   use Global_Parameters, only: OPTION_PATH_LEN, adaptivity_mesh_name
    use state_module
    use futils
    use metric_tools
@@ -124,7 +124,7 @@ contains
     name = " "
     child_name = " "
 
-    nchildren=number_of_children(path)
+    call get_number_of_children(path, nchildren)
     print *, trim(path), ": number of children: ", nchildren
     if(nchildren==0) return
     do i=0, nchildren-1

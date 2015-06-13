@@ -149,6 +149,10 @@ module fields_base
           & ele_shape_mesh 
   end interface
 
+  interface ele_n_constraints
+     module procedure ele_n_constraints_vector
+  end interface
+
   interface face_shape
      module procedure face_shape_scalar, face_shape_vector,&
           & face_shape_tensor, face_shape_mesh
@@ -176,6 +180,10 @@ module fields_base
           & face_val_at_quad_tensor, face_val_at_quad_vector_dim, &
           & face_val_at_shape_quad_scalar, face_val_at_shape_quad_vector, &
           & face_val_at_shape_quad_tensor
+  end interface
+
+  interface ele_grad_at_quad
+     module procedure ele_grad_at_quad_scalar, ele_grad_at_quad_vector
   end interface
 
   interface node_val
@@ -324,6 +332,10 @@ module fields_base
     
   interface print_mesh_incompatibility
     module procedure print_mesh_incompatibility, print_mesh_positions_incompatibility
+  end interface
+
+  interface write_minmax
+    module procedure write_minmax_scalar, write_minmax_vector, write_minmax_tensor
   end interface
     
 contains
@@ -1364,6 +1376,16 @@ contains
     family = field%mesh%shape%numbering%type
   
   end function ele_num_type_tensor
+
+  pure function ele_n_constraints_vector(vfield, ele_number) result&
+       & (ele_n_constraints)
+    integer :: ele_n_constraints
+    type(vector_field), intent(in) :: vfield
+    integer, intent(in) :: ele_number
+    
+    ele_n_constraints = vfield%mesh%shape%constraints%n_constraints
+
+  end function ele_n_constraints_vector
 
   pure function ele_loc_mesh(mesh, ele_number) result (ele_loc)
     ! Return the number of nodes of element ele_number.
@@ -2409,7 +2431,7 @@ contains
 
   end function face_val_at_shape_quad_tensor
 
-  function ele_grad_at_quad(field, ele_number, dn) result (quad_grad)
+  function ele_grad_at_quad_scalar(field, ele_number, dn) result (quad_grad)
     ! Return the grad of field at the quadrature points of
     ! ele_number. dn is the transformed element gradient.
     type(scalar_field),intent(in) :: field
@@ -2425,7 +2447,28 @@ contains
        quad_grad(i,:)=matmul(ele_val(field, ele_number),dn(:,:,i))
     end do
     
-  end function ele_grad_at_quad
+  end function ele_grad_at_quad_scalar
+
+  function ele_grad_at_quad_vector(field, ele_number, dn) result (quad_grad)
+    ! Return the grad of field at the quadrature points of
+    ! ele_number. dn is the transformed element gradient.
+    type(vector_field),intent(in) :: field
+    integer, intent(in) :: ele_number
+    real, dimension(ele_loc(field,ele_number), &
+         &          ele_ngi(field,ele_number),&
+         &          mesh_dim(field)), intent(in) :: dn
+    real, dimension(mesh_dim(field), field%dim, &
+         &          field%mesh%shape%ngi)        :: quad_grad
+    
+    integer :: i, j
+
+    do i=1, mesh_dim(field)
+       do j=1, mesh_dim(field)
+          quad_grad(i,j,:)=matmul(ele_val(field, j, ele_number),dn(:,:,i))
+       end do
+    end do
+    
+  end function ele_grad_at_quad_vector
 
   function ele_div_at_quad_tensor(field, ele_number, dn) result (quad_div)
     ! Return the grad of field (dtensor_{ij}/dx_{j}) at the quadrature points of
@@ -3072,7 +3115,7 @@ contains
     integer :: vert
 
     select case(shape%numbering%type)
-    case(ELEMENT_LAGRANGIAN, ELEMENT_BUBBLE)
+    case(ELEMENT_LAGRANGIAN, ELEMENT_BUBBLE, ELEMENT_TRACE)
       select case(shape%numbering%family)
       case (FAMILY_SIMPLEX)
         vert = shape%dim
@@ -3952,5 +3995,50 @@ contains
 
     opp_face = face_opposite_mesh(tfield%mesh, face)
   end function face_opposite_tensor
+
+  subroutine write_minmax_scalar(sfield, field_expression)
+    ! the scalar field to print its min and max of
+    type(scalar_field), intent(in):: sfield
+    ! the actual field in the code
+    character(len=*), intent(in):: field_expression
+
+    ewrite(2,*) 'Min, max of '//trim(field_expression)//' "'// &
+       trim(sfield%name)//'" = ',minval(sfield%val), maxval(sfield%val)
+
+  end subroutine write_minmax_scalar
    
+  subroutine write_minmax_vector(vfield, field_expression)
+    ! the vector field to print its min and max of
+    type(vector_field), intent(in):: vfield
+    ! the actual field in the code
+    character(len=*), intent(in):: field_expression
+
+    integer:: i
+
+    do i=1, vfield%dim
+      ewrite(2,*) 'Min, max of '//trim(field_expression)//' "'// &
+         trim(vfield%name)//'%'//int2str(i)//'" = ', &
+         minval(vfield%val(i,:)), maxval(vfield%val(i,:))
+    end do
+
+  end subroutine write_minmax_vector
+
+  subroutine write_minmax_tensor(tfield, field_expression)
+    ! the tensor field to print its min and max of
+    type(tensor_field), intent(in):: tfield
+    ! the actual field in the code
+    character(len=*), intent(in):: field_expression
+
+    integer:: i, j
+
+    do i=1, tfield%dim(1)
+      do j=1, tfield%dim(2)
+        ewrite(2,*) 'Min, max of '//trim(field_expression)//' "'// &
+          trim(tfield%name)//'%'//int2str(i)//','//int2str(j)// &
+          '" = ', minval(tfield%val(i,j,:)), maxval(tfield%val(i,j,:))
+      end do
+    end do
+
+  end subroutine write_minmax_tensor
+
 end module fields_base

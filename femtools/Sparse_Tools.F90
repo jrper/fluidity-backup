@@ -197,7 +197,7 @@ module sparse_tools
        & mult,mult_T, zero_column, addref, incref, decref, has_references, &
        & csr_matrix_pointer, block_csr_matrix_pointer, &
        & csr_sparsity, csr_sparsity_pointer, logical_array_ptr,&
-       & initialise_inactive, has_inactive, mult_addto
+       & initialise_inactive, has_inactive, mult_addto, mult_t_addto
 
   TYPE node
      !!< A node in a linked list
@@ -363,11 +363,14 @@ module sparse_tools
   interface mult_T
      module procedure csr_mult_T
   end interface
+
+  interface mult_T_addto
+     module procedure csr_mult_T_addto
+  end interface
     
   interface matmul
-     module procedure csr_matmul, csr_matmul_preallocated, &
-       block_csr_matmul, block_csr_matmul_preallocated, &
-       csr_sparsity_matmul
+     module procedure csr_matmul, &
+       block_csr_matmul, csr_sparsity_matmul
   end interface
 
   interface matmul_addto
@@ -375,7 +378,7 @@ module sparse_tools
   end interface  
   
   interface matmul_T
-     module procedure dcsr_matmul_T, csr_matmul_T, csr_matmul_t_preallocated
+     module procedure dcsr_matmul_T, csr_matmul_T
   end interface
     
   interface set_inactive
@@ -428,6 +431,9 @@ module sparse_tools
     module procedure sparsity_is_sorted
   end interface
 
+  interface write_minmax
+    module procedure csr_write_minmax, block_csr_write_minmax
+  end interface
 
 #include "Reference_count_interface_csr_sparsity.F90"
 #include "Reference_count_interface_csr_matrix.F90"
@@ -448,7 +454,8 @@ module sparse_tools
        & addto_diag, set_diag,  set, val, ival, dense, dense_i, wrap, matmul, matmul_addto, matmul_T,&
        & matrix2file, mmwrite, mmread, transpose, sparsity_sort,&
        & sparsity_merge, scale, set_inactive, get_inactive_mask, &
-       & reset_inactive, has_solver_cache, destroy_solver_cache, is_symmetric, is_sorted
+       & reset_inactive, has_solver_cache, destroy_solver_cache, is_symmetric, is_sorted, &
+       & write_minmax
        
   public :: posinm
 
@@ -957,7 +964,7 @@ contains
               size(matrix%val), name=matrix%name)
 #endif
 #ifdef DDEBUG
-         matrix%val=ieee_get_value(0.0, ieee_quiet_nan)
+         matrix%val=ieee_value(0.0, ieee_quiet_nan)
 #endif
 
          deallocate(matrix%val, stat=lstat)
@@ -1153,7 +1160,7 @@ contains
                     size(matrix%val(1,1)%ptr), name=matrix%name)
 #endif
 #ifdef DDEBUG
-          matrix%val(1,1)%ptr=ieee_get_value(0.0, ieee_quiet_nan)
+          matrix%val(1,1)%ptr=ieee_value(0.0, ieee_quiet_nan)
 #endif
           deallocate(matrix%val(1,1)%ptr, stat=lstat)
           if (lstat/=0) goto 42
@@ -1164,7 +1171,7 @@ contains
                     size(matrix%val(i,i)%ptr), name=matrix%name)
 #endif
 #ifdef DDEBUG
-            matrix%val(i,i)%ptr=ieee_get_value(0.0, ieee_quiet_nan)
+            matrix%val(i,i)%ptr=ieee_value(0.0, ieee_quiet_nan)
 #endif
             deallocate(matrix%val(i,i)%ptr, stat=lstat)
           end do
@@ -1176,7 +1183,7 @@ contains
                     size(matrix%val(i,j)%ptr), name=matrix%name)
 #endif
 #ifdef DDEBUG
-               matrix%val(i,j)%ptr=ieee_get_value(0.0, ieee_quiet_nan)
+               matrix%val(i,j)%ptr=ieee_value(0.0, ieee_quiet_nan)
 #endif
                deallocate(matrix%val(i,j)%ptr, stat=lstat)
                if (lstat/=0) goto 42
@@ -1309,7 +1316,7 @@ contains
     
     do i=1,size(matrix%colm)
 #ifdef DDEBUG
-       matrix%val(i)%ptr=ieee_get_value(0.0, ieee_quiet_nan)
+       matrix%val(i)%ptr=ieee_value(0.0, ieee_quiet_nan)
 #endif
        deallocate(matrix%colm(i)%ptr, matrix%val(i)%ptr, stat=lstat)
        if (lstat/=0) goto 666
@@ -2616,7 +2623,7 @@ contains
        end if
        ! Destroy old memory.
 #ifdef DDEBUG
-       val=ieee_get_value(0.0, ieee_quiet_nan)
+       val=ieee_value(0.0, ieee_quiet_nan)
 #endif
        deallocate(row, val)
 
@@ -3922,6 +3929,34 @@ contains
     
   end subroutine csr_mult_T  
 
+  subroutine csr_mult_T_addto(vector_out,mat,vector_in)
+    !!< Multiply the transpose of a csr_matrix by a vector,
+    !!< result is added to vector_out
+
+    !interface variables
+    real, dimension(:), intent(in) :: vector_in
+    type(csr_matrix), intent(in) :: mat
+    real, dimension(:), intent(out) :: vector_out
+
+    !local variables
+    integer :: i, j, k
+
+    ewrite(2,*) 'size(vector_in) = ', size(vector_in)
+    ewrite(2,*) 'size(mat,1) = ', size(mat,1)
+    assert(size(vector_in)==size(mat,1))
+    ewrite(2,*) 'size(vector_out) = ', size(vector_out)
+    ewrite(2,*) 'size(mat,2) = ', size(mat,2)
+    assert(size(vector_out)==size(mat,2))
+
+    do i = 1, size(vector_in)
+      do j=mat%sparsity%findrm(i), mat%sparsity%findrm(i+1)-1
+         k = mat%sparsity%colm(j)
+         vector_out(k) = vector_out(k) + mat%val(j) * vector_in(i)
+      end do
+    end do
+    
+  end subroutine csr_mult_T_addto
+
   subroutine dcsr_mult_T(m,v,mv)
     type(dynamic_csr_matrix), intent(in) :: m
     real, dimension(:), intent(in) :: v
@@ -4214,7 +4249,8 @@ contains
 
     product%name="matmul_T"//trim(matrix1%name)//"*"//trim(matrix2%name)
 
-    call matmul_t(matrix1, matrix2, product = product, set_sparsity = .not. present(model))
+    call csr_matmul_t_preallocated&
+         (matrix1, matrix2, product = product, set_sparsity = .not. present(model))
     
   end function csr_matmul_T
   
@@ -5158,6 +5194,37 @@ contains
     ewrite(2,*) 'rows, cols, nnz: ', rows, cols, nnz
     
   end subroutine mmreadheader
+
+  subroutine csr_write_minmax(matrix, matrix_expression)
+    ! the matrix to print its min and max of
+    type(csr_matrix), intent(in):: matrix
+    ! the actual matrix in the code
+    character(len=*), intent(in):: matrix_expression
+
+    ewrite(2,*) 'Min, max of '//trim(matrix_expression)//' "'// &
+            trim(matrix%name)//'" = ', minval(matrix%val), maxval(matrix%val)
+
+  end subroutine csr_write_minmax
+
+  subroutine block_csr_write_minmax(matrix, matrix_expression)
+    ! the matrix to print its min and max of
+    type(block_csr_matrix), intent(in):: matrix
+    ! the actual matrix in the code
+    character(len=*), intent(in):: matrix_expression
+
+    integer:: i, j
+
+    do i=1, blocks(matrix, 1)
+      do j=1, blocks(matrix, 2)
+        if (associated(matrix%val(i,j)%ptr)) then
+          ewrite(2,*) 'Min, max of '//trim(matrix_expression)//' "'// &
+            trim(matrix%name)//'%'//int2str(i)//','//int2str(j)// &
+            '" = ', minval(matrix%val(i,j)%ptr), maxval(matrix%val(i,j)%ptr)
+        end if
+      end do
+    end do
+
+  end subroutine block_csr_write_minmax 
 
 #include "Reference_count_csr_matrix.F90"
 #include "Reference_count_csr_sparsity.F90"

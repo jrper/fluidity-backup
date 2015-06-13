@@ -35,7 +35,7 @@ module compressible_projection
   use sparse_matrices_fields
   use field_options
   use equation_of_state, only: compressible_eos, compressible_material_eos
-  use global_parameters, only: new_options, OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN
   use fefields, only: compute_lumped_mass
   use state_fields_module
   use upwind_stabilisation
@@ -47,7 +47,9 @@ module compressible_projection
   character(len=255), private :: message
 
   private
-  public :: assemble_compressible_projection_cv, assemble_compressible_projection_cg, update_compressible_density, compressible_initialise
+
+  public :: assemble_compressible_projection_cv, assemble_compressible_projection_cg, update_compressible_density
+  public :: compressible_projection_check_options
 
   ! Stabilisation schemes
   integer, parameter :: STABILISATION_NONE = 0, &
@@ -146,7 +148,7 @@ contains
         ! find the lumped mass
         p_lumpedmass => get_lumped_mass(state, pressure%mesh)
       end if
-      ewrite_minmax(p_lumpedmass%val)
+      ewrite_minmax(p_lumpedmass)
       
       call get_option(trim(pressure%option_path)//"/prognostic/scheme/use_compressible_projection_method/normalisation/name", &
                       normalisation_field, stat=norm_stat)
@@ -176,9 +178,9 @@ contains
       call compressible_eos(state, pressure=eospressure, drhodp=drhodp)
 
       density=>extract_scalar_field(state,'Density')
-      ewrite_minmax(density%val)
+      ewrite_minmax(density)
       olddensity=>extract_scalar_field(state,'OldDensity')
-      ewrite_minmax(olddensity%val)
+      ewrite_minmax(olddensity)
 
       call get_option(trim(density%option_path)//"/prognostic/temporal_discretisation/theta", theta)
 
@@ -271,27 +273,15 @@ contains
     type(vector_field), pointer :: positions
     type(scalar_field) :: lumped_mass, tempfield, complete_pressure
 
-    ! Cause the pressure warnings to only happen once.
-    logical, save :: pressure_warned=.false.
-
     real :: atmospheric_pressure
     character(len = *), parameter :: hp_name = "HydrostaticPressure"
 
     ewrite(1,*) 'Entering assemble_mmat_compressible_projection_cv'
 
-    pressure_option_path=""
     pressure=>extract_prognostic_pressure(state, stat=stat)
-    if(stat==0) then
-       pressure_option_path=trim(pressure%option_path)
-    else if((stat==1).and.(new_options).and.(.not.pressure_warned)) then
-       ewrite(0,*) "Warning: No prognostic pressure found in state."
-       ewrite(0,*) "Strange that you've got here without a prognostic press&
-            &ure."
-       pressure_warned=.true.
-    else if((stat==2).and.(new_options).and.(.not.pressure_warned)) then
-       ewrite(0,*) "Warning: Multiple prognostic pressures found."
-       ewrite(0,*) "Not sure if new options are compatible with this yet."
-       pressure_warned=.true.
+    if(stat/=0) then
+       ! how did we end up here?
+       FLAbort("In assemble_mmat_compressible_projection_cv without a pressure")
     end if
 
     call allocate(complete_pressure,pressure%mesh,"CompletePressure")
@@ -303,6 +293,7 @@ contains
     else
        call zero(complete_pressure)
     end if
+    pressure_option_path=trim(pressure%option_path)
     
     call addto(complete_pressure,pressure)
     call zero(rhs)
@@ -548,6 +539,7 @@ contains
       ewrite_minmax(density%val)
       ewrite_minmax(olddensity%val)
 
+
       if(have_option(trim(density%option_path) // &
                           "/prognostic/spatial_discretisation/continuous_galerkin/&
                           &stabilisation/streamline_upwind_petrov_galerkin")) then
@@ -733,6 +725,21 @@ contains
        call compressible_eos(state(1),pressure=sfield)
     end select
   end subroutine compressible_initialise       
+=======
+  subroutine compressible_projection_check_options
+
+    character(len=OPTION_PATH_LEN):: prognostic_pressure_path
+    integer:: i
+
+    do i=0, option_count("/material_phase")-1
+      prognostic_pressure_path="/material_phase"//int2str(i)//"/scalar_field::Pressure/prognostic"
+      if (have_option(trim(prognostic_pressure_path)//"/spatial_discretisation/discontinuous_galerkin") &
+        .and. have_option(trim(prognostic_pressure_path)//"/scheme/use_compressible_projection")) then
+        FLExit("With a DG pressure you cannot have use_compressible_projection")
+      end if
+    end do
+
+  end subroutine compressible_projection_check_options
 
 end module compressible_projection
 
