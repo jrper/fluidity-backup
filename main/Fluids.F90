@@ -641,7 +641,7 @@ contains
           end if
 
           if (have_cloud_microphysics) then
-             if (nonlinear_iterations==1) &
+!             if (ITS==1) &
                   call calculate_microphysics_forcings(state,current_time,dt)
           end if
           field_loop: do it = 1, ntsol

@@ -1100,7 +1100,7 @@
                   delta_p%option_path = trim(p%option_path)
                   call zero(delta_p)
 
-                  call allocate(delta_u, u%dim, u%mesh, "DeltaU")
+                  call allocate(delta_u, u%dim, u%mesh, "DeltaUReduced")
                   delta_u%option_path = trim(u%option_path)
                   call zero(delta_u)
 
@@ -1473,15 +1473,17 @@
             else if (has_scalar_field(state(istate),&
                  "HydroStaticBalancePressure") .or.&
                  has_scalar_field(state(istate), "HPJRP")) then
+               allocate(hb_pressure)
+               call allocate(hb_pressure,p_theta%mesh,&
+                    "HydrostaticBalancePressure")
+               call zero(hb_pressure)
                if (has_scalar_field(state(istate),&
                     "HydroStaticBalancePressure")) then
-                  hb_pressure => extract_scalar_field(state(istate),&
-                       "HydroStaticBalancePressure")
+!                  hb_pressure => extract_scalar_field(state(istate),&
+!                       "HydroStaticBalancePressure")
+                  call calculate_galerkin_projection(state(istate),&
+                       extract_scalar_field(state, "HydroStaticBalancePressure"),hb_pressure)
                else
-                  allocate(hb_pressure)
-                  call allocate(hb_pressure,p_theta%mesh,&
-                       "HydrostaticBalancePressure")
-                  call zero(hb_pressure)
                   call calculate_galerkin_projection(state(istate),&
                        extract_scalar_field(state, "HPJRP"),hb_pressure)
                end if
@@ -1491,11 +1493,8 @@
                call addto(combined_p,hb_pressure,scale=-1.0)
                call mult_T(delta_u, ct_m(istate)%ptr, combined_p)
                call deallocate(combined_p)
-               if (.not. has_scalar_field(state(istate),&
-                    "HydroStaticBalancePressure")) then
-                  call deallocate(hb_pressure)
-                  deallocate(hb_pressure)
-               end if
+               call deallocate(hb_pressure)
+               deallocate(hb_pressure)
             else
                call mult_T(delta_u, ct_m(istate)%ptr, p_theta)
             end if

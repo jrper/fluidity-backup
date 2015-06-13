@@ -258,8 +258,8 @@ contains
 ! And finally run the user's code
     call python_run_string(trim(pycode))    
 #else
-    ewrite(-1,*) "When configuring, make sure NumPy is found"
-    FLExit("Python microphysics requires NumPy")
+    ewrite(-1,*) "When configuring, make sure Numpy is found"
+    FLExit("Python microphysics requires Numpy")
 #endif
 
   contains

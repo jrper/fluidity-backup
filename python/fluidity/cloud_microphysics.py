@@ -302,6 +302,9 @@ def fix(x,a,b):
 
 def testing(states,dt,parameters):
 
+
+    print "python Microphysics"
+
     if len(states)>1:
         state=states['Bulk']
         
@@ -317,6 +320,8 @@ def testing(states,dt,parameters):
         state=states.items()[0]
 
     M=hot_moist_microphysics_model(state,dt,parameters)
+
+    
 
 
         

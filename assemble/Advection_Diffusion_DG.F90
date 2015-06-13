@@ -829,7 +829,10 @@ contains
        include_diffusion=.true.
     end if
 
-    Source=extract_scalar_field(state, trim(field_name)//"Source"&
+    Source=extract_scalar_field(state,trim(field_name)//"Source"&
+         &, stat=stat)
+    if (stat/=0) Source=extract_scalar_field(state,&
+         trim(field_name)//"MicrophysicsSource"&
          &, stat=stat)
     if (stat/=0) then
        call allocate(Source, T%mesh, trim(field_name)//"Source",&
