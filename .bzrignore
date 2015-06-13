@@ -133,3 +133,4 @@ tests/warm_bubble/src/wm2mesh.edge
 tests/warm_bubble/src/wm2mesh.ele
 tests/warm_bubble/src/wm2mesh.msh
 tests/warm_bubble/src/wm2mesh.node
+matrixdump

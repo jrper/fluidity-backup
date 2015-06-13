@@ -60,7 +60,6 @@ module fluids_module
   use qmesh_module
   use checkpoint
   use write_state_module
-  use traffic
   use synthetic_bc
   use goals
   use adaptive_timestepping
@@ -99,12 +98,14 @@ module fluids_module
   use reduced_model_runtime
   use implicit_solids
   use sediment
-  use radiation
 #ifdef HAVE_HYPERLIGHT
   use hyperlight
 #endif
   use multiphase_module
+  use detector_parallel, only: sync_detector_coordinates, deallocate_detector_list_array
   use compressible_projection
+  use microphysics
+
 
   implicit none
 
@@ -163,6 +164,10 @@ contains
     INTEGER :: ss,ph
     LOGICAL :: have_solids
 
+    !     Turbulence modelling - JBull 24-05-11
+    LOGICAL :: have_k_epsilon
+    character(len=OPTION_PATH_LEN) :: keps_option_path
+
     ! Pointers for scalars and velocity fields
     type(scalar_field), pointer :: sfield
     type(scalar_field) :: foam_velocity_potential
@@ -173,9 +178,6 @@ contains
     logical::use_advdif=.true.  ! decide whether we enter advdif or not
 
     INTEGER :: adapt_count
-
-    ! the particle type for the radiation model 
-    type(particle_type), dimension(:), allocatable :: particles
 
     ! Absolute first thing: check that the options, if present, are valid.
     call check_options
@@ -235,7 +237,6 @@ contains
        ! need something to pass into solve_momentum
        allocate(POD_state(1:0))
     end if
-
 
     ! Check the diagnostic field dependencies for circular dependencies
     call check_diagnostic_dependencies(state)
@@ -325,6 +326,11 @@ contains
        ! Initialise the OriginalDistanceToBottom field used for wetting and drying
        if (have_option("/mesh_adaptivity/mesh_movement/free_surface/wetting_and_drying")) then
           call insert_original_distance_to_bottom(state(1))
+          ! Wetting and drying only works with no poisson guess ... lets check that
+          call get_option("/material_phase::water/scalar_field::Pressure/prognostic/scheme/poisson_pressure_solution", option_buffer)
+          if (.not. trim(option_buffer) == "never") then 
+            FLExit("Please choose 'never' under /material_phase::water/scalar_field::Pressure/prognostic/scheme/poisson_pressure_solution when using wetting and drying")
+          end if
        end if
     end if
 
@@ -332,7 +338,6 @@ contains
     !    top/bottom distance needs to be up-to-date before this call, after the movement
     !    they will be updated (inside the call)
     call move_mesh_free_surface(state, initialise=.true.)
-
 
 
     ! Initialise compressible state variables
@@ -407,12 +412,11 @@ contains
        call calculate_biology_terms(state(1))
     end if
 
-    ! Initialise radiation specific data types and register radiation diagnostics
-    if(have_option("/embedded_models/radiation")) then
-        call radiation_initialise(state, &
-                                  particles)
+    ! Initialise microphysics routine
+    !    if (have_option('/cloud_microphysics')) then
+    if (.true.) then
+       call initialise_microphysics(state,current_time,dt)
     end if
-
     call initialise_diagnostics(filename, state)
 
     ! Initialise ice_meltrate, read constatns, allocate surface, and calculate melt rate
@@ -425,7 +429,6 @@ contains
             call melt_bc(state(1))
           endif
     end if
-
     
     ! Checkpoint at start
     if(do_checkpoint_simulation(dump_no)) call checkpoint_simulation(state, cp_no = dump_no)
@@ -454,21 +457,11 @@ contains
     end if
 
     ! Initialise k_epsilon
-    if (have_option("/material_phase[0]/subgridscale_parameterisations/k-epsilon/")) then
+    have_k_epsilon = .false.
+    keps_option_path="/material_phase[0]/subgridscale_parameterisations/k-epsilon/"
+    if (have_option(trim(keps_option_path))) then
+        have_k_epsilon = .true.
         call keps_init(state(1))
-    end if
-
-
-
-
-    ! radiation eigenvalue run solve
-    if(have_option("/embedded_models/radiation")) then
-       call radiation_solve(particles, &
-                            invoke_eigenvalue_solve=.true.)
-      
-      ! write the radiation eigenvalue diagnostics
-      call write_diagnostics(state, current_time, dt, timestep)
-      
     end if
 
     ! ******************************
@@ -647,6 +640,10 @@ contains
              call solids(state(1), its, nonlinear_iterations)
           end if
 
+          !if (have_option("/cloud_microphysics")) then
+          if (.true.) then
+             call calculate_microphysics_forcings(state,current_time,dt)
+          end if
           field_loop: do it = 1, ntsol
              ewrite(2, "(a,i0,a,i0)") "Considering scalar field ", it, " of ", ntsol
              ewrite(1, *) "Considering scalar field " // trim(field_name_list(it)) // " in state " // trim(state(field_state_list(it))%name)
@@ -661,7 +658,7 @@ contains
              end if
 
              ! do we have the k-epsilon 2 equation turbulence model?
-             if( have_option("/material_phase[0]/subgridscale_parameterisations/k-epsilon/") ) then
+             if(have_k_epsilon .and. have_option(trim(keps_option_path)//"/scalar_field::"//trim(field_name_list(it)//"/prognostic"))) then
                 if( (trim(field_name_list(it))=="TurbulentKineticEnergy")) then
                     call keps_tke(state(1))
                 else if( (trim(field_name_list(it))=="TurbulentDissipation")) then
@@ -688,10 +685,6 @@ contains
              end select
 
              IF(use_advdif)THEN
-
-                if(starts_with(trim(field_name_list(it)), "TrafficTracer")) then
-                   call traffic_tracer(trim(field_name_list(it)),state(field_state_list(it)),timestep)
-                endif
 
                 sfield => extract_scalar_field(state(field_state_list(it)), field_name_list(it))
                 call calculate_diagnostic_children(state, field_state_list(it), sfield)
@@ -747,7 +740,7 @@ contains
           end if
 
           ! k_epsilon after the solve on Epsilon has finished
-          if( have_option("/material_phase[0]/subgridscale_parameterisations/k-epsilon/") ) then
+          if(have_k_epsilon .and. have_option(trim(keps_option_path)//"/scalar_field::ScalarEddyViscosity/diagnostic")) then
             ! Update the diffusivity, at each iteration.
             call keps_eddyvisc(state(1))
           end if
@@ -771,10 +764,6 @@ contains
           ! moved to here 04/02/09
           if (have_option("/porous_media")) then
              call porous_media_momentum(state)
-          end if
-
-          if (have_option("/traffic_model")) then
-             call traffic_source(state(1),timestep)
           end if
 
           if (have_solids) then
@@ -823,10 +812,6 @@ contains
              end if
           end if
 
-          if (have_option("/traffic_model")) then
-             call traffic_density_update(state(1))
-          end if
-
           if(have_solids) then
              ewrite(2,*) 'into solid_data_update'
              call solid_data_update(state(ss:ss), its, nonlinear_iterations)
@@ -868,6 +853,7 @@ contains
           ! Using state(1) should be safe as they are aliased across all states.
           call set_vector_field_in_state(state(1), "Coordinate", "IteratedCoordinate")
           call IncrementEventCounter(EVENT_MESH_MOVEMENT)
+          call sync_detector_coordinates(state(1))
        end if
 
        current_time=current_time+DT
@@ -878,12 +864,6 @@ contains
        ! calculate and write diagnostics before the timestep gets changed
        call calculate_diagnostic_variables(State, exclude_nonrecalculated=.true.)
        call calculate_diagnostic_variables_new(state, exclude_nonrecalculated = .true.)
-
-       ! radiation time run solve - which may be coupled to fluids via diagnostic fields
-       if( have_option("/embedded_models/radiation") ) then
-          call radiation_solve(particles, &
-                               invoke_eigenvalue_solve=.false.)
-       end if
           
        ! Call the modern and significantly less satanic version of study
        call write_diagnostics(state, current_time, dt, timestep)
@@ -948,6 +928,11 @@ contains
              call adapt_state_prescribed(state, current_time)
              call update_state_post_adapt(state, metric_tensor, dt, sub_state, nonlinear_iterations, nonlinear_iterations_adapt)
 
+             !          if (have_option("/cloud_microphysics")) then
+             if (.true.) then
+                call calculate_microphysics_forcings(state,current_time,&
+                     dt,adapt=.true.)
+             end if
              if(have_option("/io/stat/output_after_adapts")) call write_diagnostics(state, current_time, dt, timestep, not_to_move_det_yet=.true.)
              call run_diagnostics(state)
 
@@ -977,7 +962,7 @@ contains
     end if
 
     ! cleanup k_epsilon
-    if (have_option('/material_phase[0]/subgridscale_parameterisations/k-epsilon/')) then
+    if (have_k_epsilon) then
         call keps_cleanup()
     end if
 
@@ -985,13 +970,11 @@ contains
         call sediment_cleanup()
     end if
 
-    ! radiation cleanup
-    if( have_option("/embedded_models/radiation") ) then
-       call radiation_cleanup(particles)
-    end if
-
     ! closing .stat, .convergence and .detector files
     call close_diagnostic_files()
+
+    ! deallocate the array of all detector lists
+    call deallocate_detector_list_array()
 
     ewrite(1, *) "Printing references before final deallocation"
     call print_references(1)
@@ -1086,7 +1069,8 @@ contains
     real, intent(inout) :: dt
     integer, intent(inout) :: nonlinear_iterations, nonlinear_iterations_adapt
     type(state_type), dimension(:), pointer :: sub_state
-    
+    character(len=OPTION_PATH_LEN) :: keps_option_path
+
     ! Overwrite the number of nonlinear iterations if the option is switched on
     if(have_option("/timestepping/nonlinear_iterations/nonlinear_iterations_at_adapt")) then
       call get_option('/timestepping/nonlinear_iterations/nonlinear_iterations_at_adapt',nonlinear_iterations_adapt)
@@ -1151,7 +1135,10 @@ contains
     end if
 
     ! k_epsilon
-    if (have_option("/material_phase[0]/subgridscale_parameterisations/k-epsilon/")) then
+    keps_option_path="/material_phase[0]/subgridscale_parameterisations/k-epsilon/"
+    if (have_option(trim(keps_option_path)//"/scalar_field::TurbulentKineticEnergy/prognostic") &
+        &.and. have_option(trim(keps_option_path)//"/scalar_field::TurbulentDissipation/prognostic") &
+        &.and. have_option(trim(keps_option_path)//"/scalar_field::ScalarEddyViscosity/diagnostic")) then
         call keps_adapt_mesh(state(1))
     end if
 

@@ -47,6 +47,7 @@ module advection_diffusion_cg
   use upwind_stabilisation
   use sparsity_patterns_meshes
   use hydrostatic_pressure, only: hp_name
+  use microphysics
   
   implicit none
   
@@ -231,6 +232,7 @@ contains
     character(len = FIELD_NAME_LEN) :: density_name
     type(scalar_field), pointer :: pressure, hp
         
+    type(element_type) :: supg_element
     ewrite(1, *) "In assemble_advection_diffusion_cg"
     
     assert(mesh_dim(rhs) == mesh_dim(t))
@@ -404,6 +406,9 @@ contains
       stabilisation_scheme = STABILISATION_SUPG
       call get_upwind_options(trim(t%option_path) // "/prognostic/spatial_discretisation/continuous_galerkin/stabilisation/streamline_upwind_petrov_galerkin", &
           & nu_bar_scheme, nu_bar_scale)
+      ! Note this is not mixed mesh safe (but then nothing really is)
+      ! You actually need 1 supg_element per thread.
+      supg_element=make_supg_element(ele_shape(t,1)) 
       if(move_mesh) then
         FLExit("Haven't thought about how mesh movement works with stabilisation yet.")
       end if
@@ -432,13 +437,22 @@ contains
       call get_option(trim(t%option_path)//'/prognostic/equation[0]/density[0]/name', &
                       density_name)
       density=>extract_scalar_field(state, trim(density_name))
+      !if (trim(density_name)=="GasDensity") then
+      !   call calculate_gas_density(state,density)
+      !end if
+
       ewrite_minmax(density)
-      
       olddensity=>extract_scalar_field(state, "Old"//trim(density_name))
       ewrite_minmax(olddensity)
       
-      call get_option(trim(density%option_path)//"/prognostic/temporal_discretisation/theta", &
-                      density_theta)
+!!      call get_option(trim(density%option_path)//"/prognostic/temporal_discretisation/theta", &
+      if (have_option(trim(t%option_path)//'/prognostic/equation[0]/density[0]/discretisation_options/temporal_discretisation/theta')) then
+         call get_option(trim(t%option_path)//'/prognostic/equation[0]/density[0]/discretisation_options/temporal_discretisation/theta', &
+              density_theta)
+      else
+         call get_option(trim(density%option_path)//"/prognostic/temporal_discretisation/theta", &
+              density_theta)
+      end if
                       
       pressure=>extract_scalar_field(state, "Pressure")
 
@@ -469,7 +483,8 @@ contains
                                         positions, old_positions, new_positions, &
                                         velocity, grid_velocity, &
                                         source, absorption, diffusivity, &
-                                        density, olddensity, pressure)
+                                        density, olddensity, pressure, &
+                                        supg_element)
     end do
 
     ! as part of assembly include the already discretised optional source
@@ -518,11 +533,14 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
-    if (equation_type .eq. FIELD_EQUATION_INTERNALENERGY) &
-         call deallocate(complete_pressure)
-    
+    if (equation_type .eq. FIELD_EQUATION_INTERNALENERGY) then
+       call deallocate(complete_pressure)
+    end if
 
-    
+    if (stabilisation_scheme == STABILISATION_SUPG) &
+         call deallocate(supg_element)    
+
+
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"
     
   end subroutine assemble_advection_diffusion_cg
@@ -572,7 +590,7 @@ contains
                                       positions, old_positions, new_positions, &
                                       velocity, grid_velocity, &
                                       source, absorption, diffusivity, &
-                                      density, olddensity, pressure)
+                                      density, olddensity, pressure,supg_shape)
     integer, intent(in) :: ele
     type(scalar_field), intent(in) :: t
     type(csr_matrix), intent(inout) :: matrix
@@ -587,6 +605,7 @@ contains
     type(scalar_field), intent(in) :: density
     type(scalar_field), intent(in) :: olddensity
     type(scalar_field), intent(in) :: pressure
+    type(element_type), intent(inout) :: supg_shape
     
     integer, dimension(:), pointer :: element_nodes
     real, dimension(ele_ngi(t, ele)) :: detwei, detwei_old, detwei_new
@@ -668,15 +687,16 @@ contains
     select case(stabilisation_scheme)
       case(STABILISATION_SUPG)
         if(have_diffusivity) then
-          test_function = make_supg_shape(t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, diff_q = ele_val_at_quad(diffusivity, ele), &
+          call supg_test_function(supg_shape, t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, diff_q = ele_val_at_quad(diffusivity, ele), &
             & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
+          test_function = supg_shape
         else
-          test_function = make_supg_shape(t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, &
+          call supg_test_function(supg_shape, t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, &
             & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
         end if
+        test_function = supg_shape
       case default
         test_function = t_shape
-        call incref(test_function)
     end select
     ! Important note: with SUPG the test function derivatives have not been
     ! modified - i.e. dt_t is currently used everywhere. This is fine for P1,
@@ -703,9 +723,10 @@ contains
     if(have_source) call add_source_element_cg(ele, test_function, t, source, detwei, rhs_addto)
     
     ! Pressure
-    if(equation_type==FIELD_EQUATION_INTERNALENERGY) call add_pressurediv_element_cg(ele, test_function, t, &
-                                                                                  velocity, pressure, &
-                                                                                  du_t, detwei, rhs_addto)
+    if(equation_type==FIELD_EQUATION_INTERNALENERGY)&
+         call add_pressurediv_element_cg(ele, test_function, t, &
+         velocity, pressure, &
+         du_t, detwei, rhs_addto)
     
     ! Step 4: Insertion
             
@@ -713,8 +734,6 @@ contains
     call addto(matrix, element_nodes, element_nodes, matrix_addto)
     call addto(rhs, element_nodes, rhs_addto)
 
-    call deallocate(test_function)
-      
   end subroutine assemble_advection_diffusion_element_cg
   
   subroutine add_mass_element_cg(ele, test_function, t, density, olddensity, detwei, detwei_old, detwei_new, matrix_addto, rhs_addto)
