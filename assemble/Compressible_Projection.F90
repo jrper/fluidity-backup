@@ -270,7 +270,7 @@ contains
 
   end subroutine assemble_1mat_compressible_projection_cv
 
-    subroutine assemble_atham_compressible_projection_cv(state, cmc, rhs, dt, &
+  subroutine assemble_atham_compressible_projection_cv(state, cmc, rhs, dt, &
                                                       theta_pg, theta_divergence, cmcget)
 
     ! inputs:
@@ -413,22 +413,6 @@ contains
       
       call scale(rhs, p_lumpedmass)
       call scale(rhs, invnorm)
-      
-      !! Routine to enforce p=EOS P on boundaries
-
-!!      nobcs = get_boundary_condition_count(pressure)
-!!      do i=1, nobcs
-!!         call get_boundary_condition(pressure, i, &
-!!              surface_node_list=surface_node_list)
-!!         bc_field=> extract_surface_field(pressure,i,"value")
-
-!!         do j=1,size(surface_node_list)
-!!            node=surface_node_list(j)
-!!            call set(bc_field,j,node_val(eospressure,node))
-!!         end do
-!!      end do
-
-!! end bc routine
             
       call deallocate(eospressure)
       call deallocate(drhodp)
@@ -798,7 +782,7 @@ contains
             test_shape = make_supg_shape(test_shape_ptr, dtest_t, nlvelocity_at_quad, j_mat, &
               & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
           case default
-            call transform_to_physical(coordinate, ele, detwei=detwei)           
+            call transform_to_physical(coordinate, ele,test_shape_ptr,dshape = dtest_t, detwei=detwei)           
             test_shape = test_shape_ptr
             call incref(test_shape)
         end select
@@ -815,6 +799,11 @@ contains
         ! +source)dV
         ele_rhs = (1./dt)*shape_rhs(test_shape, detwei*((drhodp_at_quad*(eosp_at_quad - p_at_quad)) &
                                                        +(olddensity_at_quad - density_at_quad)))
+
+! Additonal term below *NOT* needed in RHS since Ctp already in RHS from incompressible projection method
+!        ele_rhs = ele_rhs + dshape_dot_vector_rhs(dtest_t,&
+!             nlvelocity_at_quad,&
+!             (theta*density_at_quad+(1.0-theta)*olddensity_at_quad)*detwei)
         
         if(have_source) then
           ele_rhs = ele_rhs + shape_rhs(test_shape, detwei*ele_val_at_quad(source, ele))

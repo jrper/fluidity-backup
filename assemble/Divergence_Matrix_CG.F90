@@ -371,8 +371,11 @@ contains
         call assemble_1mat_compressible_divergence_matrix_cg(ctp_m, state(1), ct_rhs)
         
       else
-      
-        FLExit("Multimaterial compressible continuous_galerkin pressure not possible.")
+         if (have_option(trim(state(1)%option_path)//'/equation_of_state/compressible/ATHAM')) then
+            call assemble_1mat_compressible_divergence_matrix_cg(ctp_m, state(1), ct_rhs)
+         else
+            FLExit("Multimaterial compressible continuous_galerkin pressure not possible.")
+         end if
         
       end if
     

@@ -218,6 +218,7 @@ contains
     multimaterial = .false.
     materialvolumefraction_count = 0
     subtract_count = 0
+
     if(size(state)>1) then
       do i = 1, size(state)
         if(has_scalar_field(state(i), "MaterialVolumeFraction")) then
@@ -232,7 +233,24 @@ contains
         
       end do
       if(size(state)/=materialvolumefraction_count) then
-        FLExit("Multiple material_phases but not all of them have MaterialVolumeFractions.")
+         option_path='/material_phase::'//trim(state(1)%name)//'/equation_of_state'
+         if (have_option(trim(option_path)//'/compressible/ATHAM')) then
+            call allocate(eosdensity, mesh, "LocalCompressibleEOSDensity")
+            
+            call compressible_eos(state, density=eosdensity)
+              
+            if(present(bulk_density)) then
+               call set(bulk_density, eosdensity)
+            end if
+            if(present(buoyancy_density)) then
+               call set(buoyancy_density, eosdensity)
+            end if
+            
+            call deallocate(eosdensity)
+            return
+         else
+            FLExit("Multiple material_phases but not all of them have MaterialVolumeFractions.")
+         end if
       end if
       if(subtract_count>1) then
         FLExit("You can only select one material_phase to use the reference_density from to subtract out the hydrostatic level.")

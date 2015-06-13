@@ -33,6 +33,7 @@ module microphysics
   use state_module
   use fields
   use sparse_tools
+  use fefields
   use fetools
   use boundary_conditions
   use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN,&
@@ -88,15 +89,16 @@ contains
 
     character(len=OPTION_PATH_LEN) :: prefix
     integer :: i
-    logical :: microphysics_on
+    logical :: microphysics_on, python_microphysics
     type(scalar_field), dimension (:), allocatable :: extras
     type(logic_array) :: logic
     
     if (have_option("/cloud_microphysics/microphysical_model")) then
-       prefix="/cloud_microphysics/microphysical_mdeol"
+       prefix="/cloud_microphysics/microphysical_model"
     end if
        
-    microphysics_on=have_option("/cloud_microphysics/")
+    microphysics_on=have_option("/cloud_microphysics")
+    python_microphysics=.true. !have_option("/cloud_microphysics/python")
 
     if (microphysics_on) then
        if (.not. present(adapt)) then
@@ -134,9 +136,14 @@ contains
        call set_EOS_pressure_and_temperature(state,&
             logic%have_temp,&
             logic%have_EOSPressure,&
-            logic%have_EOSDensity,extras=extras)    
-       call calculate_microphysics_from_python(state,&
-            prefix,current_time,dt,extras,logic)
+            logic%have_EOSDensity,extras=extras)
+       if (python_microphysics) then
+          call calculate_microphysics_from_python(state,&
+               prefix,current_time,dt,extras,logic)
+       else
+          call calculate_microphysics_from_fortran(state,&
+               current_time,dt,extras)
+       end if
        if (present(adapt)) then
           if (size(state)>1) then
              do i=2,size(state)
@@ -183,6 +190,7 @@ contains
     integer :: i
 
 #ifdef HAVE_NUMPY
+
     call python_reset()
     call python_add_states(state)
 
@@ -240,7 +248,6 @@ contains
     end do
     
     
-
     if (have_option(trim(prefix))) then
        ! read the users code from flml
        call get_option(trim(prefix),pycode)
@@ -248,7 +255,6 @@ contains
        ! default option saves time, but requires default setup
        pycode="import fluidity.cloud_microphysics as cm"//NEW_LINE('A')//"cm.testing(states,dt,parameters)"
     end if
-
 ! And finally run the user's code
     call python_run_string(trim(pycode))    
 #else
@@ -289,6 +295,172 @@ subroutine calculate_incompressible_pressure_correction(state,pressure_correctio
 
 end subroutine calculate_incompressible_pressure_correction
 
+subroutine calculate_microphysics_from_fortran(state,current_time,dt,extras)
+    ! Set microphysical  source terms from python.
+    type(state_type),intent(inout), dimension(:) :: state
+    real, intent(in) :: current_time
+    real, intent(in) :: dt
+    type(scalar_field), dimension(:), intent(in) :: extras
+
+    integer :: i,ele
+
+    type microphysics_field
+       type(scalar_field), dimension(3) :: data
+       type(scalar_field), pointer :: Forcing, slip_velocity
+       logical :: has_forcing,has_slip_velocity
+    end type microphysics_field
+
+    type(microphysics_field) :: pq_v,pq_r,pq_c,pp,prho,pS
+    type(mesh_type) :: mesh
+
+    ! data arrays for the pass into the fortran routine
+    ! These have the following order
+
+    ! (1) Old Timelevel Value (input, projected)
+    ! (2) Previous nonlinear iteration (input, projected)
+    ! (3) Current nonlinear iteration (input, projected)
+    ! (4) Sinking Velocity (output, on Microphysics mesh)
+    ! (5) Microphysics forcing (output, on Microphysics mesh)
+
+
+    real, dimension(5) :: q_v,q_r,q_c,p,rho,S
+        
+
+#ifdef FORTRAN_MICROPHYSICS
+    interface 
+       subroutine microphysics_main(time,timestep,lq_v,lq_r,lq_c,lp,lrho,lS)
+         real :: time, timestep
+         real, dimension(5) :: lq_v,lq_r,lq_c,p,lrho,lS
+       end subroutine microphysics_main
+    end interface
+
+
+    mesh=>extract_mesh(state(1),"MicrophysicsMesh")
+
+
+
+
+    call extract_and_project(state,pq_v, "WaterVapour","MassFraction")
+    call extract_and_project(state,pq_c, "CloudWater", "MassFraction")
+    call extract_and_project(state,pq_r, "RainWater",  "MassFraction")
+    call extract_and_project(state,pp,   "Bulk",       "Pressure",&
+         forcing=.false.,slip_velocity=.false.)
+    call extract_and_project(state,prho, "Bulk",       "Density")
+    call extract_and_project(state,pS,   "Bulk",       "Density",&
+         entropy=.true.)
+
+    do ele=1,node_count(pp)
+
+       ! Get element arrays
+
+       call set_local_array(q_v,pq_v,ele)
+       call set_local_array(q_c,pq_c,ele)
+       call set_local_array(q_r,pq_r,ele)
+       call set_local_array(p,pp,ele)
+       call set_local_array(rho,prho,ele)
+       call set_local_array(S,pS,ele)
+
+       !   Call external routines
+
+       call microphysics_main(current_time,dt,&
+       q_v,q_r,q_c,p,rho,S)
+
+       !   Call use results
+       call store_result(pp_v,p_v,ele)
+       call store_result(pp_c,p_c,ele)
+       call store_result(pp_r,p_r,ele)
+       call store_result(prho,prho,ele)
+       call store_result(pS,S,ele)
+    end do
+
+    call clean_up(pp_v,p_v)
+    call clean_up(pp_c,p_c)
+    call clean_up(pp_r,p_r)
+    call clean_up(pp,p)
+    call clean_up(prho,prho)
+    call clean_up(pS,S)
+
+#else
+    FLAbort("Attempting to call external Fortran Microphysics without a linked external microphysics routine")
+#endif
+
+  contains 
+
+    subroutine extract_and_project(lstate,mfield,material,fname,&
+         forcing,sinking_velocity,entropy)
+      type(state_type), dimension(:), intent(inout) :: lstate
+      type(microphysics_field) :: mfield
+      type(scalar_field), pointer :: sfield
+      type(vector_field), pointer :: X
+      character(len=*), intent(in) :: material, fname
+
+      logical, intent(in), optional :: forcing, sinking_velocity,entropy
+      logical :: lforcing=.true.,lsinking_velocity=.true.,lentropy=.true.
+      
+      integer :: i
+      type(mesh_type), pointer :: lmesh
+
+      character(len=*), dimension(3), parameter::&
+           old=(/ "Old     ",&
+                  "Iterated",&
+                  "        " /)
+      
+
+      if (present(entropy)) lentropy=entropy
+      if (present(sinking_velocity)) lsinking_velocity=sinking_velocity
+      if (present(forcing)) lforcing=forcing
+
+      lmesh=>extract_mesh(lstate(1),"MicrophysicsMesh")
+
+      X=>extract_vector_field(lstate(1),"Coordinate")
+
+      do i=1,size(mfield%data)
+         call allocate(mfield%data(i),lmesh,trim(old(i))//material//fname)
+         if (lentropy) then
+            sfield=>extract_entropy_variable(lstate,prefix=trim(old(i)))
+         else
+            sfield=>extract_scalar_field(extract_state(lstate,material),&
+                 trim(old(i))//fname)
+         end if
+         call project_field(mfield%data(i),sfield,X)
+      end do
+
+      if (entropy) then
+         if (lforcing) then
+            mfield%forcing=>extract_entropy_variable(state,&
+                 suffix="MicrophysicsForcing")
+         end if
+         if (lsinking_velocity) then
+            mfield%forcing=>extract_entropy_variable(state,&
+                 suffix="SinkingVelocity")
+         end if
+      else
+         if (lforcing) then
+            mfield%forcing=>extract_scalar_field(extract_state(state,material),&
+                 "MicrophysicsForcing")
+         end if
+         if (lsinking_velocity) then
+            mfield%forcing=>extract_scalar_field(extract_state(state,material),&
+                 fname//"SinkingVelocity")
+         end if
+      end if
+
+    end subroutine extract_and_project
+
+    subroutine set_local_array(local_array,fields,lele)
+      real, dimension(:), intent(inout) :: local_array
+      type(microphysics_field), intent(in) :: fields
+      integer, intent(in) :: lele
+      integer :: i
+      
+      do i=1,size(fields%data)
+         local_array(i)=node_val(fields%data(i),lele)
+      end do
+      
+    end subroutine set_local_array
+
+end subroutine calculate_microphysics_from_fortran
+
 subroutine calculate_gas_density(state,gas_density)
   type(state_type), intent(in) :: state
   type(scalar_field), pointer :: density, q_c,q_r
@@ -328,15 +500,8 @@ subroutine initialise_microphysics(state,current_time,dt)
   integer :: i
 
   ! In case it's needed later, so we can ensure everything we need exists
-  if (size(state)==1) then
-     microphysics_on=has_scalar_field(state(1),"CloudWaterFraction")
-  else
-     microphysics_on=.false.
-     do i = 1, size(state)
-        if (trim(state(i)%name)=="CloudWater") &
-             microphysics_on=.true.
-     end do
-  end if
+  
+  microphysics_on=have_option('/cloud_microphysics')
 
   if (microphysics_on) then
      call set_EOS_pressure_and_temperature(state,.true.,.true.,.true.)

@@ -28,11 +28,11 @@ Gls_vertical_turbulence_model.o ../include/gls.mod: \
 
 Microphysics.o ../include/microphysics.mod: Microphysics.F90 \
    ../include/boundary_conditions.mod ../include/equation_of_state.mod \
-   ../include/fdebug.h ../include/fetools.mod ../include/fields.mod \
-   ../include/global_parameters.mod ../include/python_state.mod \
-   ../include/solvers.mod ../include/sparse_tools.mod \
-   ../include/sparsity_patterns_meshes.mod ../include/spud.mod \
-   ../include/state_module.mod
+   ../include/fdebug.h ../include/fefields.mod ../include/fetools.mod \
+   ../include/fields.mod ../include/global_parameters.mod \
+   ../include/python_state.mod ../include/solvers.mod \
+   ../include/sparse_tools.mod ../include/sparsity_patterns_meshes.mod \
+   ../include/spud.mod ../include/state_module.mod
 
 ../include/iceshelf_meltrate_surf_normal.mod: iceshelf_meltrate_surf_normal.o
 	@true

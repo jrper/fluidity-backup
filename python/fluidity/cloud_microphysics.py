@@ -129,8 +129,13 @@ class microphysics_model(object):
                     self.state.scalar_fields[name+'Source'].val)
                 self.fields['delta'+field][:]=0.0
             except KeyError:
-                ewrite(3,'KeyError! %s'%field)
-                pass
+                try:
+                    self.fields['delta'+field]=(
+                    self.state.scalar_fields[name+'MicrophysicsSource'].val)
+                    self.fields['delta'+field][:]=0.0
+                except KeyError:
+                    ewrite(3,'KeyError! %s'%field)
+                    pass
             try:
                 self.fields[field+'slip']=(
                     self.state.scalar_fields[name+'SinkingVelocity'].val)
@@ -302,7 +307,10 @@ def testing(states,dt,parameters):
         
         for a in ('WaterVapour','CloudWater','RainWater'):
             state.scalar_fields['Iterated'+a+'Fraction']=states[a].scalar_fields['IteratedMassFraction']
-            state.scalar_fields[a+'FractionSource']=states[a].scalar_fields['MassFractionSource']
+            if 'MassFractionMicrophysicsSource' in states[a].scalar_fields:
+                state.scalar_fields[a+'FractionSource']=states[a].scalar_fields['MassFractionMicrophysicsSource']
+            else:
+                state.scalar_fields[a+'FractionSource']=states[a].scalar_fields['MassFractionSource']
             state.scalar_fields[a+'FractionSinkingVelocity']=states[a].scalar_fields['MassFractionSinkingVelocity']
             state.scalar_fields['Old'+a+'Fraction']=states[a].scalar_fields['OldMassFraction']
     else:

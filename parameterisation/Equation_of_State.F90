@@ -37,7 +37,8 @@ module equation_of_state
   use boundary_conditions, only: set_dirichlet_consistent, get_boundary_condition_count
   use sparsity_patterns_meshes
   use transform_elements, only: transform_to_physical
-  use diagnostic_fields, only : calculate_galerkin_projection
+  use diagnostic_fields, only: calculate_galerkin_projection
+  use vtk_interfaces, only: vtk_write_fields
   
   implicit none
   
@@ -49,7 +50,8 @@ module equation_of_state
   private
   public :: calculate_perturbation_density, mcD_J_W_F2002, &
             compressible_eos, compressible_material_eos, &
-            set_EOS_pressure_and_temperature, safe_set
+            set_EOS_pressure_and_temperature, safe_set, &
+            extract_entropy_variable
 
 contains
 
@@ -862,9 +864,14 @@ contains
        call remap_field(field2,field1)
     else
 !       call zero(field1)
-       call calculate_galerkin_projection(state,field2,field1)
+       call calculate_galerkin_projection(state,field2,field1,alpha=0.0)
        ewrite_minmax(field1)     
        ewrite_minmax(field2)
+       call vtk_write_fields(field1%name,&
+            position=extract_vector_field(state,&
+            "Coordinate"),&
+            model=field2%mesh,sfields=(/field1,field2,&
+            extract_scalar_field(state,"Time")/))
     end if
 
 
@@ -1161,7 +1168,7 @@ contains
                       *qc_p_node+qc_solid_node)
 
 
-                 do nlin=1,50
+                 do nlin=1,200
                     p_node=p_node&
                          -(fp_node-temp_node)&
                          /((p0/p_node)**((qc_p_node-qc_v_node)/qc_p_node)&
@@ -2102,7 +2109,7 @@ subroutine assemble_pressure_matrix(ele,M,rhs,x,&
        i=i+2
     end if
     if (have_EOSDensity) then
-       density=>extract_scalar_field(state(1),"EOSDensity",stat)
+       density=>extract_scalar_field(state(1),"IteratedEOSDensity",stat)
        if (stat == 0) call compressible_eos(state,density=density)
     else
        call allocate(extras(i),thermal%mesh,"IteratedEOSDensity")
@@ -2117,5 +2124,44 @@ subroutine assemble_pressure_matrix(ele,M,rhs,x,&
     end if
 
   end subroutine set_EOS_pressure_and_temperature
+
+  function extract_entropy_variable(states,prefix,suffix) result(sfield)
+    type(state_type), dimension(:) :: states
+    character(len=*), optional :: prefix, suffix
+    type(scalar_field), pointer :: sfield
+
+
+    character(len=OPTION_PATH_LEN) ::lprefix,lsuffix
+    integer :: i,j,stat
+
+    character(len=*), dimension(3), parameter ::&
+         entropy_names= (/ "PotentialTemperature",&
+                           "InternalEnergy      ",&
+                           "Temperature         "/)
+
+    ! Routine searches (in order) for one of the entropy names above 
+    ! in the states given to it, then returns the field
+                           
+    if (present(prefix)) then
+       lprefix=prefix
+    else
+       lprefix=""
+    end if
+
+     if (present(suffix)) then
+       lsuffix=suffix
+    else
+       lsuffix=""
+    end if
+
+    do j=1,size(entropy_names)
+       sfield=>extract_scalar_field(states,&
+            trim(lprefix)//trim(entropy_names(j))//trim(lsuffix),stat=stat)
+       if (stat==0) return
+    end do
+
+    FLAbort('Failed to find entropy field when using Atham Equation of state')
+
+  end function extract_entropy_variable
 
 end module equation_of_state
