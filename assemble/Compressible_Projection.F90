@@ -36,7 +36,7 @@ module compressible_projection
   use field_options
   use equation_of_state, only: compressible_eos, compressible_material_eos
   use global_parameters, only: OPTION_PATH_LEN
-  use fefields, only: compute_lumped_mass
+  use fefields, only: compute_cv_mass
   use state_fields_module
   use upwind_stabilisation
   use hydrostatic_pressure, only : hp_name, calculate_hydrostatic_pressure
@@ -117,8 +117,11 @@ contains
     type(scalar_field) :: eospressure, drhodp
     type(scalar_field), pointer :: normalisation, &
                                    density, olddensity
-    type(scalar_field), pointer :: pressure, hydrostatic_pressure
+
+    type(scalar_field), pointer :: pressure
     type(scalar_field), pointer :: p_lumpedmass
+    type(scalar_field), pointer :: p_cvmass
+
     type(scalar_field) :: lhsfield, invnorm, absrhs
     
     type(scalar_field), pointer :: source, absorption
@@ -145,14 +148,10 @@ contains
       call get_option(trim(pressure%option_path)//'/prognostic/atmospheric_pressure', &
                       atmospheric_pressure, default=0.0)
       
-      if(pressure%mesh%shape%degree>1) then
-        ! try lumping on the submesh
-        p_lumpedmass => get_lumped_mass_on_submesh(state, pressure%mesh)
-      else
-        ! find the lumped mass
-        p_lumpedmass => get_lumped_mass(state, pressure%mesh)
-      end if
-      ewrite_minmax(p_lumpedmass)
+      ! find the cv mass
+      p_cvmass => get_cv_mass(state, pressure%mesh)
+
+      ewrite_minmax(p_cvmass)
       
       call get_option(trim(pressure%option_path)//"/prognostic/scheme/use_compressible_projection_method/normalisation/name", &
                       normalisation_field, stat=norm_stat)
@@ -188,12 +187,12 @@ contains
 
       call get_option(trim(density%option_path)//"/prognostic/temporal_discretisation/theta", theta)
 
-      call set(lhsfield, p_lumpedmass)
+      call set(lhsfield, p_cvmass)
       call scale(lhsfield, drhodp)
       call scale(lhsfield, invnorm)
       call addto_diag(cmc, lhsfield, scale=1./(dt*dt*theta_divergence*theta_pg))
       
-!     rhs = invnorm*p_lumpedmass* &
+!     rhs = invnorm*p_cvmass* &
 !      ( (1./dt)*(olddensity - density + drhodp*(eospressure - (pressure + atmospheric_pressure)))
 !       +(absorption)*(drhodp*theta_pg*(eospressure - (pressure + atmospheric_pressure)) - theta_pg*density - (1-theta_pg)*olddensity)
 !       +source)
@@ -237,7 +236,7 @@ contains
         call addto_diag(cmc, lhsfield, scale=(theta/(dt*theta_divergence*theta_pg)))
       end if
       
-      call scale(rhs, p_lumpedmass)
+      call scale(rhs, p_cvmass)
       call scale(rhs, invnorm)
       
       !! Routine to enforce p=EOS P on boundaries
@@ -471,10 +470,10 @@ contains
 
     type(scalar_field), pointer :: pressure, hydrostatic_pressure
     type(vector_field), pointer :: positions
-    type(scalar_field) :: lumped_mass, tempfield, complete_pressure
+    type(scalar_field) :: cv_mass, tempfield
+
 
     real :: atmospheric_pressure
-    character(len = *), parameter :: hp_name = "HydrostaticPressure"
 
     ewrite(1,*) 'Entering assemble_mmat_compressible_projection_cv'
 
@@ -484,18 +483,10 @@ contains
        FLAbort("In assemble_mmat_compressible_projection_cv without a pressure")
     end if
 
-    call allocate(complete_pressure,pressure%mesh,"CompletePressure")
 
 
-    if (has_scalar_field(state(1),hp_name)) then
-       hydrostatic_pressure=>extract_scalar_field(state(1),hp_name)
-       call remap_field(hydrostatic_pressure,complete_pressure)
-    else
-       call zero(complete_pressure)
-    end if
     pressure_option_path=trim(pressure%option_path)
     
-    call addto(complete_pressure,pressure)
     call zero(rhs)
    
     if(have_option(trim(pressure_option_path)//"/prognostic/scheme/use_compressible_projection_method")) THEN
@@ -504,9 +495,9 @@ contains
       if(cmcget) then
 
         positions=>extract_vector_field(state(1), "Coordinate")
-        call allocate(lumped_mass, pressure%mesh, "LumpedMassField")
+        call allocate(cv_mass, pressure%mesh, "CVMassField")
         call allocate(tempfield, pressure%mesh, "TemporaryAssemblyField")
-        call compute_lumped_mass(positions, lumped_mass)
+        call compute_cv_mass(positions, cv_mass)
 
         allocate(dummy_ones)
         call allocate(dummy_ones, pressure%mesh, "DummyOnesField")
@@ -569,19 +560,19 @@ contains
         end if
         
         call zero(tempfield)
-        tempfield%val = (1./(dt*dt))*lumped_mass%val*normdrhodp%val
+        tempfield%val = (1./(dt*dt))*cv_mass%val*normdrhodp%val
 
         call addto_diag(cmc, tempfield)
 
-        rhs%val = (1./dt)*lumped_mass%val* &
+        rhs%val = (1./dt)*cv_mass%val* &
                           ( &
                             normolddensity%val &
                           - normdensity%val &
                           ) &
-               +(1./dt)*lumped_mass%val* &
+               +(1./dt)*cv_mass%val* &
                           ( &
                             normmatdrhodpp%val &
-                          - normdrhodp%val*(complete_pressure%val+atmospheric_pressure) &
+                          - normdrhodp%val*(pressure%val+atmospheric_pressure) &
                           )
 
         call deallocate(normdensity)
@@ -592,11 +583,11 @@ contains
         call deallocate(materialpressure)
         call deallocate(materialdrhodp)
 
-        call deallocate(lumped_mass)
+        call deallocate(cv_mass)
         call deallocate(tempfield)
         call deallocate(dummy_ones)
         deallocate(dummy_ones)
-        call deallocate(complete_pressure)
+
 
 
      end if

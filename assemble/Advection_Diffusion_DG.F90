@@ -104,6 +104,9 @@ module advection_diffusion_DG
   ! are we moving the mesh?
   logical :: move_mesh
 
+  ! Include porosity?
+  logical :: include_porosity
+
   ! Stabilisation schemes.
   integer :: stabilisation_scheme
   integer, parameter :: NONE=0
@@ -727,6 +730,15 @@ contains
     integer, dimension(:), allocatable :: bc_type
 
     type(mesh_type), pointer :: mesh_cg
+    
+    ! Porosity fields, field name, theta value
+    type(scalar_field), pointer :: porosity_old, porosity_new
+    type(scalar_field) :: porosity_theta 
+    character(len=FIELD_NAME_LEN) :: porosity_name
+    real :: porosity_theta_value
+    
+    !! Add the Source directly to the right hand side?
+    logical :: add_src_directly_to_rhs
 
     ewrite(1,*) "Writing advection-diffusion equation for "&
          &//trim(field_name)
@@ -810,9 +822,19 @@ contains
        call allocate(Source, T%mesh, trim(field_name)//"Source",&
             FIELD_TYPE_CONSTANT)
        call zero(Source)
+       
+       add_src_directly_to_rhs = .false.
     else
        ! Grab an extra reference to cause the deallocate below to be safe.
        call incref(Source)
+      
+       add_src_directly_to_rhs = have_option(trim(Source%option_path)//'/diagnostic/add_directly_to_rhs')
+      
+       if (add_src_directly_to_rhs) then 
+          ewrite(2, *) "Adding Source field directly to the right hand side"
+          assert(node_count(Source) == node_count(T))
+       end if
+
     end if
 
     Absorption=extract_scalar_field(state, trim(field_name)//"Absorption"&
@@ -879,6 +901,43 @@ contains
        allocate (particle_fraction(0),particle_densities(0))
     end if
 
+    ! Porosity
+    if (have_option(trim(T%option_path)//'/prognostic/porosity')) then
+       include_porosity = .true.
+         
+       ! get the name of the field to use as porosity
+       call get_option(trim(T%option_path)//'/prognostic/porosity/porosity_field_name', &
+                       porosity_name, &
+                       default = 'Porosity')
+         
+       ! get the porosity theta value
+       call get_option(trim(T%option_path)//'/prognostic/porosity/temporal_discretisation/theta', &
+                       porosity_theta_value, &
+                       default = 0.0)
+         
+       porosity_new => extract_scalar_field(state, trim(porosity_name), stat=stat)
+       
+       if (stat /=0) then
+          FLExit('Including porosity in Advection_Diffusion_DG but failed to extract Porosity from state')
+       end if
+                      
+       porosity_old => extract_scalar_field(state, "Old"//trim(porosity_name), stat=stat)
+
+       if (stat /=0) then
+          FLExit('Including porosity in Advection_Diffusion_DG but failed to extract OldPorosity from state')
+       end if
+       
+       call allocate(porosity_theta, porosity_new%mesh)
+         
+       call set(porosity_theta, porosity_new, porosity_old, porosity_theta_value)
+         
+       ewrite_minmax(porosity_theta)         
+    else
+       include_porosity = .false.
+       call allocate(porosity_theta, T%mesh, field_type=FIELD_TYPE_CONSTANT)
+       call set(porosity_theta, 1.0)
+    end if
+
     ! Retrieve scalar options from the options dictionary.
     if (.not.semi_discrete) then
        call get_option(trim(T%option_path)//&
@@ -896,6 +955,9 @@ contains
            
     move_mesh = (have_option("/mesh_adaptivity/mesh_movement").and.include_mass)
     if(move_mesh) then
+      if (include_porosity) then
+         FLExit('Cannot include porosity in DG advection diffusion of a field with a moving mesh')
+      end if
       ewrite(2,*) 'Moving mesh'
       X_old => extract_vector_field(state, "OldCoordinate")
       X_new => extract_vector_field(state, "IteratedCoordinate")
@@ -982,9 +1044,14 @@ contains
             pressure, old_pressure, energy_density, old_energy_density,&
             particle_fraction, particle_densities, &
             bc_value, bc_type, q_mesh, mass, &
-            & buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude) 
+            & buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude,&
+            add_src_directly_to_rhs, porosity_theta) 
        
     end do element_loop
+
+    ! Add the source directly to the rhs if required 
+    ! which must be included before dirichlet BC's.
+    if (add_src_directly_to_rhs) call addto(rhs, Source)
     
     ! Drop any extra field references.
     if (have_buoyancy_adjustment_by_vertical_diffusion) call deallocate(buoyancy)
@@ -994,7 +1061,8 @@ contains
     call deallocate(U_nl)
     call deallocate(U_nl_backup)
     call deallocate(bc_value)
-
+    call deallocate(porosity_theta)
+    
   end subroutine construct_advection_diffusion_dg
 
   subroutine lumped_mass_galerkin_projection_scalar(state, field, projected_field)
@@ -1092,7 +1160,8 @@ contains
        & pressure, old_pressure, energy_density, old_energy_density, &
        & particle_fractions, particle_densities, &
        & bc_value, bc_type, &
-       & q_mesh, mass, buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude)
+       & q_mesh, mass, buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude, &
+       & add_src_directly_to_rhs, porosity_theta)
     !!< Construct the advection_diffusion equation for discontinuous elements in
     !!< acceleration form.
     implicit none
@@ -1128,6 +1197,13 @@ contains
 
     !! Diffusivity
     type(tensor_field), intent(in) :: Diffusivity
+    
+    !! If adding Source directly to rhs then
+    !! do nothing with it here
+    logical, intent(in) :: add_src_directly_to_rhs
+    
+    !! Porosity theta averaged field
+    type(scalar_field), intent(in) :: porosity_theta
 
     !! Flag for a periodic boundary
     logical :: Periodic_neigh 
@@ -1275,7 +1351,7 @@ contains
       assert(ele_loc(U_mesh, ele)==ele_loc(X, ele))
       assert(ele_ngi(U_mesh, ele)==ele_ngi(U_nl, ele))
     end if
-
+    
     dg=continuity(T)<0
     primal = .not.dg
     if(diffusion_scheme == CDG) primal = .true.
@@ -1431,8 +1507,13 @@ contains
        if(move_mesh) then
           mass_mat = shape_shape(T_shape, T_shape, detwei_new)
        else
-          mass_mat = shape_shape(T_shape, T_shape, detwei)
-       end if
+          if (include_porosity) then
+             assert(ele_ngi(T, ele)==ele_ngi(porosity_theta, ele))
+             mass_mat = shape_shape(T_shape, T_shape, detwei*ele_val_at_quad(porosity_theta, ele))      
+          else
+             mass_mat = shape_shape(T_shape, T_shape, detwei)
+      end if
+   end if
     case(FIELD_EQUATION_INTERNALENERGY)
        en_den_ele = ele_val_at_quad(energy_density, ele)
        old_en_den_ele = ele_val_at_quad(old_energy_density, ele)
@@ -1619,25 +1700,21 @@ contains
     end if
 
     ! Source term
-    l_T_rhs=l_T_rhs &
-         + shape_rhs(T_shape, detwei*ele_val_at_quad(Source, ele))
+    if (.not. add_src_directly_to_rhs) then
+       l_T_rhs=l_T_rhs &
+            + shape_rhs(T_shape, detwei*ele_val_at_quad(Source, ele))
+    end if
 
     ! Pressure contribution to internal energy equation.
 
-    if (equation_type==FIELD_EQUATION_INTERNALENERGY) then
-       incompfix=0.0
-       do i =1,size(particle_fractions)
-          incompfix=incompfix-ele_val_at_quad(particle_fractions(i),ele)/particle_densities(i)
-       end do
-       incompfix=1.0+incompfix*(beta*en_den_ele+(1.0-beta)*old_en_den_ele)
+    if (equation_type == FIELD_EQUATION_INTERNALENERGY) then
        l_T_rhs=l_T_rhs &
-            - shape_rhs(T_shape, incompfix*detwei*&
-            & ele_div_at_quad(U_nl,ele,du_t)* &
-            (beta*ele_val_at_quad(pressure, ele)&
-            + (1.0 - beta)*ele_val_at_quad(old_pressure, ele)))
+         - shape_rhs(T_shape, incompfix*detwei*&
+         & ele_div_at_quad(U_nl,ele,du_t)* &
+         (beta*ele_val_at_quad(pressure, ele)&
+         + (1.0 - beta)*ele_val_at_quad(old_pressure, ele)))
     end if
-       
-         
+
     if(move_mesh) then
       l_T_rhs=l_T_rhs &
          -shape_rhs(T_shape, ele_val_at_quad(t, ele)*(detwei_new-detwei_old)/dt)
