@@ -14,7 +14,6 @@ include "spatial_discretisation.rnc"
 include "temporal_discretisation.rnc"
 include "embedded_models.rnc"
 include "flredecomp.rnc"
-include "porous_media.rnc"
 
 start =
    (
@@ -33,7 +32,7 @@ start =
                # Lines is a hint to the gui about the size of the text box.
                # It is not an enforced limit on string length.
                attribute lines { "1" },
-               ( "fluids" | "oceans" | "multimaterial" | "stokes" | "large_scale_ocean_options" | "foams" | "multiphase" )
+               ( "fluids" | "oceans" | "multimaterial" | "porous_media" | "stokes" | "large_scale_ocean_options" | "foams" | "multiphase" )
             },
             comment
          },
@@ -1677,7 +1676,71 @@ start =
          biology?,
          forcing?,
          reduced_model?,
-         porous_media_model?,
+         ## Porous Media
+         element porous_media {
+            ## Specify scalar field Porosity
+            element scalar_field {
+               attribute name { "Porosity" },
+               (
+                  element prescribed {
+                     velocity_mesh_choice,
+                     prescribed_scalar_field
+                  }|
+                  element aliased {
+                     generic_aliased_field
+                  }
+               )
+            },
+            ## Specify field Permeability
+            (
+               element scalar_field {
+                  attribute name { "Permeability" },
+                  (
+                     element prescribed {
+                        velocity_mesh_choice,
+                        prescribed_scalar_field
+                     }|
+                     element aliased {
+                        generic_aliased_field
+                     }
+                  )
+               }|
+               element vector_field {
+                  attribute name { "Permeability" },
+                  element prescribed {
+                     velocity_mesh_choice,
+                     prescribed_vector_field
+                  }
+               }|
+               element tensor_field {
+                  attribute name { "Permeability" },
+                  element prescribed { 
+                     velocity_mesh_choice,
+                     prescribed_tensor_field
+                  }
+               }
+            ),
+            ## Specify scalar field Electrical Conductivity
+            element scalar_field {
+               attribute name { "ElectricalConductivity" },
+               element diagnostic {
+                  velocity_mesh_choice,
+                  (
+                     internal_algorithm |
+                     scalar_python_diagnostic_algorithm
+                  ),
+                  diagnostic_scalar_field_no_adapt
+               }
+            }?,
+            element multiphase_parameters {
+               ## Capillary pressure multiplier cp_A
+               ## in eq: cp_A*((Phase1_saturation+0.00001)**(-cp_expo))
+               element cp_A {real}?,
+               ## Capillary pressure exponent cp_expo
+               ## in eq: cp_A*((Phase1_saturation+0.00001)**(-cp_expo))
+               element cp_expo {real}?
+            }?
+         }?,
          embedded_models?,
          flredecomp?
       }
@@ -1926,28 +1989,65 @@ prognostic_density_field =
          )
       }*,
       ## source term
-      element scalar_field {
-         attribute name { "Source" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt,
-               recalculation_options?
-            }|
-            element diagnostic {
-              internal_algorithm,
-              diagnostic_scalar_field_no_adapt
-            } 
-         )
-      }?,
-      ## Absorption term
-      element scalar_field {
-         attribute name { "Absorption" },
-         attribute rank { "0" },
-         element prescribed {
-            prescribed_scalar_field_no_adapt
+      (
+         element scalar_field {
+            attribute name { "Source" },
+            attribute rank { "0" },
+            element type {
+               attribute name {"Sources"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt,
+                  recalculation_options?
+               }|
+               element diagnostic {
+                  internal_algorithm,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }|
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            element type {
+               attribute name {"Sources"}
+            },
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt,
+                  recalculation_options?
+               }|
+               element diagnostic {
+                  internal_algorithm,
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
          }
-      }?,
+      )*,
+      (
+         ## Absorption term
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            element type {
+               attribute name {"Absorptions"}
+            },
+            element prescribed {
+               prescribed_scalar_field_no_adapt
+            }
+         }|
+         element scalar_field {
+            attribute name { "Absorption" },
+            attribute rank { "0" },
+            element type {
+               attribute name {"Absorptions"}
+            },
+            element prescribed {
+               prescribed_scalar_field_no_adapt
+            }
+         }
+      )*,
       prognostic_scalar_output_options,
       prognostic_scalar_stat_options,
       scalar_convergence_options,
@@ -1955,7 +2055,7 @@ prognostic_density_field =
       scalar_steady_state_options,
       adaptivity_options_prognostic_scalar_field,
       interpolation_algorithm_scalar,
-      discrete_properties_algorithm_scalar?,
+         discrete_properties_algorithm_scalar?,
       ## Set the priority of this field
       ## This determines the order in which scalar_fields are solved for:
       ##  - higher numbers have the highest priority
@@ -1965,7 +2065,7 @@ prognostic_density_field =
          integer
       }?
    )
-
+      
 geometry = 
    (
       ## Options dealing with the specification of geometry
@@ -2402,13 +2502,13 @@ velocity_components_choice =
          }|
          element align_bc_with_surface {
             element normal_component {
-               input_choice_real
+               input_choice_real_plus_field
             }?,
             element tangent_component_1 {
-               input_choice_real
+               input_choice_real_plus_field
             }?,
             element tangent_component_2 {
-               input_choice_real
+               input_choice_real_plus_field
             }?,
             rotation_matrix_components,
             ## this will calculate the determinant of the
@@ -3912,7 +4012,6 @@ scalar_field_choice =
                element diagnostic {
                   internal_algorithm,
                   velocity_mesh_choice,
-                  porosity_include_cv_cfl?,                                    
                   diagnostic_scalar_field
                }|
                element aliased {
@@ -3932,7 +4031,6 @@ scalar_field_choice =
                element diagnostic {
                   internal_algorithm,
                   velocity_mesh_choice,
-                  porosity_include_dg_cfl?,
                   diagnostic_scalar_field
                }|
                element aliased {
@@ -4212,12 +4310,6 @@ scalar_field_choice =
             (element diagnostic {
                internal_algorithm,
                velocity_mesh_choice,
-               ## Include the density field in the Grid Reynolds number calculation.
-               ## A Density field must exist in the material_phase for this.
-               ## This assumes that the viscosity used is the dynamic viscosity.
-               element include_density_field {
-                  comment
-               }?,
                diagnostic_scalar_field
             }
             | element aliased { generic_aliased_field })
@@ -4718,12 +4810,6 @@ scalar_field_choice =
                   internal_algorithm,
                   element integrate_divergence_by_parts {
                      empty
-                  }?,
-                  ## Test the divergence operator with the CV dual function space. 
-                  ## This is useful if the pressure is solved with a CV discretisation 
-                  ## or with a CG but with the continuity tested with the CV dual. 
-                  element test_with_cv_dual {
-                     comment
                   }?,
                   diagnostic_scalar_field_no_adapt,
                   element solver {

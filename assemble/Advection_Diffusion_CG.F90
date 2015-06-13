@@ -102,17 +102,17 @@ module advection_diffusion_cg
   ! Source?
   logical :: have_source
   ! Add source directly to the right hand side?
-  logical :: add_src_directly_to_rhs
+  logical, dimension(:), allocatable :: add_src_directly_to_rhs
   ! Absorption?
   logical :: have_absorption
+  ! Relaxation Term?
+  logical :: have_relaxation
   ! Diffusivity?
   logical :: have_diffusivity
   ! Isotropic diffusivity?
   logical :: isotropic_diffusivity
   ! Is the mesh moving?
   logical :: move_mesh
-  ! Include porosity?
-  logical :: include_porosity
 
 contains
 
@@ -221,7 +221,9 @@ contains
     integer :: i, j, stat
     integer, dimension(:), allocatable :: t_bc_types
     type(scalar_field) :: t_bc, t_bc_2
-    type(scalar_field), pointer :: absorption, sinking_velocity, source
+    type(state_type), pointer :: sources, absorptions
+    type(state_type), pointer :: relax_coeffs, relax_values
+    type(scalar_field), pointer :: sinking_velocity
     type(tensor_field), pointer :: diffusivity
     type(vector_field) :: velocity
     type(vector_field), pointer :: gravity_direction, velocity_ptr, grid_velocity
@@ -232,12 +234,6 @@ contains
     type(scalar_field), pointer :: pressure, hp
         
     type(element_type) :: supg_element
-    
-    ! Porosity fields, field name, theta value
-    type(scalar_field), pointer :: porosity_old, porosity_new
-    type(scalar_field) :: porosity_theta 
-    character(len=OPTION_PATH_LEN) :: porosity_name
-    real :: porosity_theta_value
   
     ewrite(1, *) "In assemble_advection_diffusion_cg"
     
@@ -283,37 +279,87 @@ contains
     end if
         
     ! Source
-    source => extract_scalar_field(state, trim(t%name) // "Source", stat = stat)
-    have_source = stat == 0
-    if(have_source) then
-      assert(mesh_dim(source) == mesh_dim(t))
-      assert(ele_count(source) == ele_count(t))
-      
-      add_src_directly_to_rhs = have_option(trim(source%option_path)//'/diagnostic/add_directly_to_rhs')
-      
-      if (add_src_directly_to_rhs) then 
-         ewrite(2, *) "Adding Source field directly to the right hand side"
-         assert(node_count(source) == node_count(t))
-      end if
-      
-      ewrite_minmax(source)
+ 
+    sources=>extract_child_state(state,&
+         trim(t%name)//"::Sources",stat)
+    if (stat /= 0 .and. has_scalar_field(state,trim(t%name)//"Source")) then
+       ! Ugly code to grandfather in single source fields
+       nullify(sources)
+       allocate(sources)
+       call nullify(sources)
+       sources%name="Temporary"
+       call insert(sources,extract_scalar_field(state,trim(t%name)//"Source",stat),&
+            trim(t%name)//"Source")
+    end if
+       
+    have_source= stat == 0
+    if (have_source) then
+       allocate(add_src_directly_to_rhs(size(sources%scalar_fields)))
+       do i=1,size(sources%scalar_fields)
+          assert(mesh_dim(sources%scalar_fields(i)%ptr) == mesh_dim(t))
+          assert(ele_count(sources%scalar_fields(i)%ptr) == ele_count(t))
+          add_src_directly_to_rhs(i) = &
+               have_option(trim(sources%scalar_fields(i)%ptr%option_path)&
+               //'/diagnostic/add_directly_to_rhs')
+          if (add_src_directly_to_rhs(i)) then 
+             ewrite(2, *) "Adding "//sources%scalar_fields(i)%ptr%name//" field directly to the right hand side"
+             assert(node_count(sources%scalar_fields(i)%ptr) == node_count(t))
+          end if
+          ewrite_minmax(sources%scalar_fields(i)%ptr)
+       end do
     else
       ewrite(2, *) "No source"
-      
-      add_src_directly_to_rhs = .false.
     end if
     
     ! Absorption
-    absorption => extract_scalar_field(state, trim(t%name) // "Absorption", stat = stat)
+
+    absorptions=>extract_child_state(state,&
+         trim(t%name)//"::Absorptions",stat)
+    if (stat /= 0 .and. has_scalar_field(state,trim(t%name)//"Absorption")) then
+       ! Ugly code to grandfather in single source fields
+       nullify(absorptions)
+       allocate(absorptions)
+       absorptions%name="Temporary"
+       call insert(absorptions,extract_scalar_field(state,trim(t%name)//"Absorption",stat),&
+            trim(t%name)//"Absorption")
+    end if
+
     have_absorption = stat == 0
     if(have_absorption) then
-      assert(mesh_dim(absorption) == mesh_dim(t))
-      assert(ele_count(absorption) == ele_count(t))
+       do i=1,size(absorptions%scalar_fields)
+          assert(mesh_dim(absorptions%scalar_fields(i)%ptr) == mesh_dim(t))
+          assert(ele_count(absorptions%scalar_fields(i)%ptr) == ele_count(t))
     
-      ewrite_minmax(absorption)
+          ewrite_minmax(absorptions%scalar_fields(i)%ptr)
+       end do
     else
       ewrite(2, *) "No absorption"
     end if
+
+    relax_coeffs=>extract_child_state(state,&
+         trim(t%name)//"::RelaxationCoefficients",stat)
+    have_relaxation = stat == 0
+
+    relax_values=>extract_child_state(state,&
+         trim(t%name)//"::RelaxationValues",stat)
+    have_relaxation = have_relaxation .or. (stat==0)
+
+    if (have_relaxation) then
+       assert(size(relax_coeffs%scalar_fields)==size(relax_values%scalar_fields))
+       do i=1,size(relax_coeffs%scalar_fields)
+          assert(mesh_dim(relax_coeffs%scalar_fields(i)%ptr) == mesh_dim(t))
+          assert(ele_count(relax_coeffs%scalar_fields(i)%ptr) == ele_count(t))
+          assert(mesh_dim(relax_values%scalar_fields(i)%ptr) == mesh_dim(t))
+          assert(ele_count(relax_values%scalar_fields(i)%ptr) == ele_count(t))
+    
+          ewrite_minmax(relax_coeffs%scalar_fields(i)%ptr)
+          ewrite_minmax(relax_values%scalar_fields(i)%ptr)
+       end do
+    else
+      ewrite(2, *) "No relaxation"
+    end if
+ 
+    
 
     ! Sinking velocity
     sinking_velocity => extract_scalar_field(state, trim(t%name) // "SinkingVelocity", stat = stat)
@@ -348,43 +394,6 @@ contains
     else
       isotropic_diffusivity = .false.
       ewrite(2, *) "No diffusivity"
-    end if
-
-    ! Porosity
-    if (have_option(trim(complete_field_path(t%option_path))//'/porosity')) then
-       include_porosity = .true.
-         
-       ! get the name of the field to use as porosity
-       call get_option(trim(complete_field_path(t%option_path))//'/porosity/porosity_field_name', &
-                       porosity_name, &
-                       default = 'Porosity')
-         
-       ! get the porosity theta value
-       call get_option(trim(complete_field_path(t%option_path))//'/porosity/temporal_discretisation/theta', &
-                       porosity_theta_value, &
-                       default = 0.0)
-         
-       porosity_new => extract_scalar_field(state, trim(porosity_name), stat = stat)                  
-
-       if (stat /=0) then
-          FLExit('Including porosity in Advection_Diffusion_CG but failed to extract Porosity from state')
-       end if
-       
-       porosity_old => extract_scalar_field(state, "Old"//trim(porosity_name), stat = stat)
-
-       if (stat /=0) then
-          FLExit('Including porosity in Advection_Diffusion_CG but failed to extract Porosity from state')
-       end if
-       
-       call allocate(porosity_theta, porosity_new%mesh)
-         
-       call set(porosity_theta, porosity_new, porosity_old, porosity_theta_value)
-         
-       ewrite_minmax(porosity_theta)         
-    else
-       include_porosity = .false.
-       call allocate(porosity_theta, t%mesh, field_type=FIELD_TYPE_CONSTANT)
-       call set(porosity_theta, 1.0)
     end if
     
     ! Step 2: Pull options out of the options tree
@@ -428,9 +437,6 @@ contains
     ! are we moving the mesh?
     move_mesh = (have_option("/mesh_adaptivity/mesh_movement") .and. have_mass)
     if(move_mesh) then
-      if (include_porosity) then
-         FLExit('Cannot include porosity in CG advection diffusion of a field with a moving mesh')
-      end if
       ewrite(2,*) "Moving the mesh"
       old_positions => extract_vector_field(state, "OldCoordinate")
       ewrite_minmax(old_positions)
@@ -537,14 +543,21 @@ contains
       call assemble_advection_diffusion_element_cg(i, t, matrix, rhs, &
                                         positions, old_positions, new_positions, &
                                         velocity, grid_velocity, &
-                                        source, absorption, diffusivity, &
-                                        density, olddensity, pressure, porosity_theta, &
+                                        sources, absorptions,&
+                                        relax_values, relax_coeffs, diffusivity, &
+                                        density, olddensity, pressure,&
                                         supg_element)
     end do
 
     ! Add the source directly to the rhs if required 
     ! which must be included before dirichlet BC's.
-    if (add_src_directly_to_rhs) call addto(rhs, source)
+    if (have_source) then
+       do i=1,size(sources%scalar_fields)
+          if (add_src_directly_to_rhs(i)) &
+               call addto(rhs, sources%scalar_fields(i)%ptr)
+       end do
+       deallocate(add_src_directly_to_rhs)
+    end if
     
     ! Step 4: Boundary conditions
     
@@ -555,7 +568,7 @@ contains
     
       allocate(t_bc_types(surface_element_count(t)))
       call get_entire_boundary_condition(t, &
-                                         (/ "neumann      ", &
+                                         (/ "neumann      ",& 
                                             "weakdirichlet", &
                                             "internal     ", &
                                             "robin        "/), &
@@ -594,8 +607,18 @@ contains
 
     if (stabilisation_scheme == STABILISATION_SUPG) &
          call deallocate(supg_element)
-    call deallocate(porosity_theta)
-    
+
+    if (have_source) then
+       if (sources%name=="Temporary") then
+          call deallocate(sources)
+       end if
+    end if
+    if (have_absorption) then
+       if (absorptions%name=="Temporary") then
+          call deallocate(absorptions)
+       end if
+    end if
+
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"
     
   end subroutine assemble_advection_diffusion_cg
@@ -644,8 +667,9 @@ contains
   subroutine assemble_advection_diffusion_element_cg(ele, t, matrix, rhs, &
                                       positions, old_positions, new_positions, &
                                       velocity, grid_velocity, &
-                                      source, absorption, diffusivity, &
-                                      density, olddensity, pressure, porosity_theta, supg_shape)
+                                      sources, absorptions,&
+                                      relax_values,relax_coeffs, diffusivity, &
+                                      density, olddensity, pressure, supg_shape)
     integer, intent(in) :: ele
     type(scalar_field), intent(in) :: t
     type(csr_matrix), intent(inout) :: matrix
@@ -654,13 +678,12 @@ contains
     type(vector_field), pointer :: old_positions, new_positions
     type(vector_field), intent(in) :: velocity
     type(vector_field), pointer :: grid_velocity
-    type(scalar_field), intent(in) :: source
-    type(scalar_field), intent(in) :: absorption
+    type(state_type), intent(in) :: sources, absorptions
+    type(state_type), intent(in) :: relax_coeffs, relax_values
     type(tensor_field), intent(in) :: diffusivity
     type(scalar_field), intent(in) :: density
     type(scalar_field), intent(in) :: olddensity
     type(scalar_field), intent(in) :: pressure
-    type(scalar_field), intent(in) :: porosity_theta
     type(element_type), intent(inout) :: supg_shape
     
     integer, dimension(:), pointer :: element_nodes
@@ -677,6 +700,8 @@ contains
     ! go, so that we only do the calculations we really need
     real, dimension(ele_loc(t, ele)) :: rhs_addto
     real, dimension(ele_loc(t, ele), ele_loc(t, ele)) :: matrix_addto
+
+    integer :: i
     
 #ifdef DDEBUG
     assert(ele_ngi(positions, ele) == ele_ngi(t, ele))
@@ -685,18 +710,28 @@ contains
       assert(ele_ngi(diffusivity, ele) == ele_ngi(t, ele))
     end if
     if(have_source) then
-      assert(ele_ngi(source, ele) == ele_ngi(t, ele))
+       do i=1,size(sources%scalar_fields)
+          assert(ele_ngi(sources%scalar_fields(i)%ptr, ele) == ele_ngi(t, ele))
+       end do
     end if
     if(have_absorption) then
-      assert(ele_ngi(absorption, ele) == ele_ngi(t, ele))
+       do i=1,size(sources%scalar_fields)
+          assert(ele_ngi(absorptions%scalar_fields(i)%ptr, ele) == ele_ngi(t, ele))
+       end do
+    end if
+    if(have_relaxation) then
+       assert(size(relax_values%scalar_fields)==size(relax_coeffs%scalar_fields))
+       do i=1,size(relax_values%scalar_fields)
+          assert(ele_ngi(relax_values%scalar_fields(i)%ptr, ele) == ele_ngi(t, ele))
+       end do
+       do i=1,size(relax_coeffs%scalar_fields)
+          assert(ele_ngi(relax_coeffs%scalar_fields(i)%ptr, ele) == ele_ngi(t, ele))
+       end do
     end if
     if(move_mesh) then
       ! the following has been assumed in the declarations above
       assert(ele_loc(grid_velocity, ele) == ele_loc(positions, ele))
       assert(ele_ngi(grid_velocity, ele) == ele_ngi(velocity, ele))
-    end if
-    if (include_porosity) then
-      assert(ele_ngi(porosity_theta, ele) == ele_ngi(t, ele))    
     end if
 #endif
 
@@ -764,7 +799,7 @@ contains
     ! Step 3: Assemble contributions
     
     ! Mass
-    if(have_mass) call add_mass_element_cg(ele, test_function, t, density, olddensity, porosity_theta, detwei, detwei_old, detwei_new, matrix_addto, rhs_addto)
+    if(have_mass) call add_mass_element_cg(ele, test_function, t, density, olddensity, detwei, detwei_old, detwei_new, matrix_addto, rhs_addto)
     
     ! Advection
     if(have_advection) call add_advection_element_cg(ele, test_function, t, &
@@ -773,14 +808,35 @@ contains
                                         dt_t, du_t, dug_t, drho_t, detwei, j_mat, matrix_addto, rhs_addto)
         
     ! Absorption
-    if(have_absorption) call add_absorption_element_cg(ele, test_function, t, absorption, detwei, matrix_addto, rhs_addto)
+    if(have_absorption) then
+       do i=1,size(absorptions%scalar_fields)
+          call add_absorption_element_cg(ele, test_function, t,&
+               absorptions%scalar_fields(i)%ptr, detwei, matrix_addto, rhs_addto)
+       end do
+    end if
     
     ! Diffusivity
     if(have_diffusivity) call add_diffusivity_element_cg(ele, t, diffusivity, dt_t, detwei, matrix_addto, rhs_addto)
     
     ! Source
-    if(have_source .and. (.not. add_src_directly_to_rhs)) then 
-       call add_source_element_cg(ele, test_function, t, source, detwei, rhs_addto)
+    if(have_source)then
+       do i=1,size(sources%scalar_fields)
+          if (.not. add_src_directly_to_rhs(i)) & 
+               call add_source_element_cg(ele, test_function,&
+               t, sources%scalar_fields(i)%ptr, detwei, rhs_addto)
+       end do
+    end if
+
+    ! Relaxation term
+    if(have_relaxation)then
+       do i=1,size(relax_values%scalar_fields)
+               call add_relaxation_element_cg(ele, test_function,&
+               t, relax_values%scalar_fields(i)%ptr,&
+               relax_coeffs%scalar_fields(i)%ptr,&
+               detwei, rhs_addto)
+               call add_absorption_element_cg(ele, test_function, t,&
+               relax_coeffs%scalar_fields(i)%ptr, detwei, matrix_addto, rhs_addto)
+       end do
     end if
     
     ! Pressure
@@ -797,12 +853,11 @@ contains
 
   end subroutine assemble_advection_diffusion_element_cg
   
-  subroutine add_mass_element_cg(ele, test_function, t, density, olddensity, porosity_theta, detwei, detwei_old, detwei_new, matrix_addto, rhs_addto)
+  subroutine add_mass_element_cg(ele, test_function, t, density, olddensity, detwei, detwei_old, detwei_new, matrix_addto, rhs_addto)
     integer, intent(in) :: ele
     type(element_type), intent(in) :: test_function
     type(scalar_field), intent(in) :: t
     type(scalar_field), intent(in) :: density, olddensity
-    type(scalar_field), intent(in) :: porosity_theta    
     real, dimension(ele_ngi(t, ele)), intent(in) :: detwei, detwei_old, detwei_new
     real, dimension(ele_loc(t, ele), ele_loc(t, ele)), intent(inout) :: matrix_addto
     real, dimension(ele_loc(t, ele)), intent(inout) :: rhs_addto
@@ -811,11 +866,8 @@ contains
     real, dimension(ele_loc(t, ele), ele_loc(t, ele)) :: mass_matrix
     
     real, dimension(ele_ngi(density,ele)) :: density_at_quad
-    real, dimension(ele_ngi(porosity_theta,ele)) :: porosity_theta_at_quad
     
     assert(have_mass)
-    
-    if (include_porosity) porosity_theta_at_quad = ele_val_at_quad(porosity_theta, ele)
     
     select case(equation_type)
     case(FIELD_EQUATION_INTERNALENERGY)
@@ -827,11 +879,7 @@ contains
         ! needs to be evaluated at t+dt
         mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei_new*density_at_quad)
       else
-        if (include_porosity) then
-          mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei*density_at_quad*porosity_theta_at_quad)        
-        else
-          mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei*density_at_quad)
-        end if
+        mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei*density_at_quad)
       end if
     case default
     
@@ -839,11 +887,7 @@ contains
         ! needs to be evaluated at t+dt
         mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei_new)
       else
-        if (include_porosity) then
-          mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei*porosity_theta_at_quad)
-        else 
-          mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei)
-        end if
+        mass_matrix = shape_shape(test_function, ele_shape(t, ele), detwei)
       end if
       
     end select
@@ -1024,7 +1068,7 @@ contains
     
     real, dimension(ele_loc(t, ele), ele_loc(t, ele)) ::  absorption_mat
     
-    assert(have_absorption)
+    assert(have_absorption .or. have_relaxation)
     
     absorption_mat = shape_shape(test_function, ele_shape(t, ele), detwei * ele_val_at_quad(absorption, ele))
     
@@ -1033,6 +1077,23 @@ contains
     rhs_addto = rhs_addto - matmul(absorption_mat, ele_val(t, ele))
     
   end subroutine add_absorption_element_cg
+
+  subroutine add_relaxation_element_cg(ele, test_function, t,&
+       equilibrium_value, coefficient , detwei, rhs_addto)
+    integer, intent(in) :: ele
+    type(element_type), intent(in) :: test_function
+    type(scalar_field), intent(in) :: t
+    type(scalar_field), intent(in) :: equilibrium_value, coefficient
+    real, dimension(ele_ngi(t, ele)), intent(in) :: detwei
+    real, dimension(ele_loc(t, ele)), intent(inout) :: rhs_addto
+   
+    assert(have_relaxation)
+   
+    rhs_addto = rhs_addto + shape_rhs(test_function,&
+         detwei * ele_val_at_quad(equilibrium_value, ele)&
+         *ele_val_at_quad(coefficient, ele))
+    
+  end subroutine add_relaxation_element_cg
   
   subroutine add_diffusivity_element_cg(ele, t, diffusivity, dt_t, detwei, matrix_addto, rhs_addto)
     integer, intent(in) :: ele

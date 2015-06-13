@@ -55,6 +55,7 @@ module advection_diffusion_DG
   use global_parameters, only : FIELD_NAME_LEN
   use field_options
   use equation_of_state, only : safe_set
+  use porous_media
 
   implicit none
 
@@ -432,7 +433,6 @@ contains
     call construct_advection_diffusion_dg(matrix, rhs, field_name, state,&
          velocity_name=velocity_name) 
 
-    
     ! Apply strong dirichlet boundary conditions.
     ! This is for big spring boundary conditions.
     call apply_dirichlet_conditions(matrix, rhs, T, dt)
@@ -492,11 +492,14 @@ contains
     real :: max_courant_number
 
     character(len=FIELD_NAME_LEN) :: limiter_name
-    integer :: i
+    integer :: i,j
+    
+    !! Courant number field name used for temporal subcycling
+    character(len=FIELD_NAME_LEN) :: Courant_number_name
+
 
     T=>extract_scalar_field(state, field_name)
     T_old=>extract_scalar_field(state, "Old"//field_name)
-    X=>extract_vector_field(state, "Coordinate")
 
     ! Reset T to value at the beginning of the timestep.
     call set(T, T_old)
@@ -530,11 +533,15 @@ contains
     call allocate(rhs, T%mesh, trim(field_name)//" RHS")
     call allocate(rhs_diff, T%mesh, trim(field_name)//" Diffusion RHS")
    
+    equation_type=equation_type_index(trim(t%option_path))
+
     call construct_advection_diffusion_dg(matrix, rhs, field_name, state, &
-         mass, matrix_diff, rhs_diff, semidiscrete=.true., &
+         mass=mass, diffusion_m=matrix_diff, diffusion_rhs=rhs_diff, semidiscrete=.true., &
          velocity_name=velocity_name)
 
-    call get_dg_inverse_mass_matrix(inv_mass, mass)
+    ! mass has only been assembled only for owned elements, so we can only compute
+    ! its inverse for owned elements
+    call get_dg_inverse_mass_matrix(inv_mass, mass, only_owned_elements=.true.)
     
     ! Note that since theta and dt are module global, these lines have to
     ! come after construct_advection_diffusion_dg.
@@ -553,9 +560,17 @@ contains
             &"/prognostic/temporal_discretisation/discontinuous_galerkin"//&
             &"/maximum_courant_number_per_subcycle", Max_Courant_number)
        
-       s_field => extract_scalar_field(state, "DG_CourantNumber")
-       call calculate_diagnostic_variable(state, "DG_CourantNumber", &
-            & s_field)
+       ! Determine the courant field to use to find the max
+       call get_option(trim(T%option_path)//&
+            &"/prognostic/temporal_discretisation/discontinuous_galerkin"//&
+            &"/maximum_courant_number_per_subcycle/courant_number/name", &
+            &Courant_number_name, default="DG_CourantNumber")
+       
+       s_field => extract_scalar_field(state, trim(Courant_number_name))
+       call calculate_diagnostic_variable(state, trim(Courant_number_name), &
+            & s_field, option_path=trim(T%option_path)//&
+            &"/prognostic/temporal_discretisation/discontinuous_galerkin"//&
+            &"/courant_number")
        
        subcycles = ceiling( maxval(s_field%val)/Max_Courant_number)
        call allmax(subcycles)
@@ -593,16 +608,19 @@ contains
     end if
 
     U_nl=>extract_vector_field(state, velocity_name)
+    X=>extract_vector_field(state, "Coordinate")
 
     do i=1, subcycles
-       
+
        ! dT = Advection * T
        call mult(delta_T, matrix, T)
+
        ! dT = dT + RHS
        call addto(delta_T, RHS, -1.0)
+
        ! dT = M^(-1) dT
        call dg_apply_mass(inv_mass, delta_T)
-       
+
        ! T = T + dt/s * dT
        call addto(T, delta_T, scale=-dt/subcycles)
        call halo_update(T)
@@ -713,8 +731,6 @@ contains
     !! Pressure and density for internal energy equation
     type(scalar_field), pointer :: pressure, old_pressure, energy_density, old_energy_density
     character(len = FIELD_NAME_LEN) :: density_name
-    type(scalar_field), allocatable :: particle_fraction(:)
-    real, allocatable :: particle_densities(:)
 
     !! Mesh for auxiliary variable
     type(mesh_type), save :: q_mesh
@@ -731,11 +747,8 @@ contains
 
     type(mesh_type), pointer :: mesh_cg
     
-    ! Porosity fields, field name, theta value
-    type(scalar_field), pointer :: porosity_old, porosity_new
-    type(scalar_field) :: porosity_theta 
-    character(len=FIELD_NAME_LEN) :: porosity_name
-    real :: porosity_theta_value
+    ! Porosity field
+    type(scalar_field) :: porosity_theta
     
     !! Add the Source directly to the right hand side?
     logical :: add_src_directly_to_rhs
@@ -880,15 +893,6 @@ contains
        old_energy_density=>extract_scalar_field(state, "Old"//trim(density_name))
        ewrite_minmax(old_energy_density)
 
-       if (has_scalar_field(state,"CloudWaterFraction")) then
-          allocate(particle_fraction(1),particle_densities(1))
-          particle_fraction=(/extract_scalar_field(state,"CloudWaterFraction")/)
-          particle_densities=(/1024.0/)
-       else
-          allocate(particle_fraction(0),particle_densities(0))
-       end if
-  
-
 
     else
        ! Point these at something, so that the field dimensions are sane
@@ -898,40 +902,14 @@ contains
           energy_density=>extract_scalar_field(state,"Density",stat=stat)
           old_energy_density=>extract_scalar_field(state,"Density",stat=stat)
        end if
-       allocate (particle_fraction(0),particle_densities(0))
     end if
 
     ! Porosity
     if (have_option(trim(T%option_path)//'/prognostic/porosity')) then
        include_porosity = .true.
-         
-       ! get the name of the field to use as porosity
-       call get_option(trim(T%option_path)//'/prognostic/porosity/porosity_field_name', &
-                       porosity_name, &
-                       default = 'Porosity')
-         
-       ! get the porosity theta value
-       call get_option(trim(T%option_path)//'/prognostic/porosity/temporal_discretisation/theta', &
-                       porosity_theta_value, &
-                       default = 0.0)
-         
-       porosity_new => extract_scalar_field(state, trim(porosity_name), stat=stat)
-       
-       if (stat /=0) then
-          FLExit('Including porosity in Advection_Diffusion_DG but failed to extract Porosity from state')
-       end if
-                      
-       porosity_old => extract_scalar_field(state, "Old"//trim(porosity_name), stat=stat)
 
-       if (stat /=0) then
-          FLExit('Including porosity in Advection_Diffusion_DG but failed to extract OldPorosity from state')
-       end if
-       
-       call allocate(porosity_theta, porosity_new%mesh)
-         
-       call set(porosity_theta, porosity_new, porosity_old, porosity_theta_value)
-         
-       ewrite_minmax(porosity_theta)         
+       ! get the porosity theta averaged field - this will allocate it
+       call form_porosity_theta(porosity_theta, state, option_path = trim(T%option_path)//'/prognostic/porosity')       
     else
        include_porosity = .false.
        call allocate(porosity_theta, T%mesh, field_type=FIELD_TYPE_CONSTANT)
@@ -1042,10 +1020,9 @@ contains
             & rhs_diff, X, X_old, X_new, T, U_nl, U_mesh, Source, &
             Absorption, Diffusivity,&
             pressure, old_pressure, energy_density, old_energy_density,&
-            particle_fraction, particle_densities, &
-            bc_value, bc_type, q_mesh, mass, &
+            bc_value, bc_type, q_mesh, &
             & buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude,&
-            add_src_directly_to_rhs, porosity_theta) 
+            add_src_directly_to_rhs, porosity_theta, mass=mass) 
        
     end do element_loop
 
@@ -1158,10 +1135,9 @@ contains
        & rhs_diff, &
        & X, X_old, X_new, T, U_nl, U_mesh, Source, Absorption, Diffusivity,&
        & pressure, old_pressure, energy_density, old_energy_density, &
-       & particle_fractions, particle_densities, &
        & bc_value, bc_type, &
-       & q_mesh, mass, buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude, &
-       & add_src_directly_to_rhs, porosity_theta)
+       & q_mesh, buoyancy, gravity, gravity_magnitude, mixing_diffusion_amplitude, &
+       & add_src_directly_to_rhs, porosity_theta,mass)
     !!< Construct the advection_diffusion equation for discontinuous elements in
     !!< acceleration form.
     implicit none
@@ -1188,12 +1164,9 @@ contains
     type(scalar_field), intent(in) :: T, Source, Absorption
     ! Modifications for internal energy equation
     type(scalar_field), intent(in) ::pressure, old_pressure, energy_density, old_energy_density
-    real, dimension(ele_ngi(energy_density,ele)) :: en_den_ele, old_en_den_ele, incompfix
+    real, dimension(ele_ngi(energy_density,ele)) :: en_den_ele, old_en_den_ele
     real, dimension(ele_loc(energy_density, ele), ele_ngi(energy_density, ele), mesh_dim(T)) ::&
          & ded_t 
-
-    type(scalar_field),dimension(:),intent(in) :: particle_fractions
-    real, dimension(:), intent(in) :: particle_densities
 
     !! Diffusivity
     type(tensor_field), intent(in) :: Diffusivity
@@ -1588,6 +1561,7 @@ contains
              !  /                                   /
              Advection_mat = shape_vector_dot_dshape(t_shape, U_nl_q, dt_t, detwei)  &
                   + beta * shape_shape(t_shape, t_shape, U_nl_div_q * detwei)
+
              if(move_mesh) then
                 Advection_mat = Advection_mat &
                       - shape_shape(t_shape, t_shape, ele_div_at_quad(U_mesh, ele, dug_t) * detwei)
@@ -1709,7 +1683,7 @@ contains
 
     if (equation_type == FIELD_EQUATION_INTERNALENERGY) then
        l_T_rhs=l_T_rhs &
-         - shape_rhs(T_shape, incompfix*detwei*&
+         - shape_rhs(T_shape,detwei*&
          & ele_div_at_quad(U_nl,ele,du_t)* &
          (beta*ele_val_at_quad(pressure, ele)&
          + (1.0 - beta)*ele_val_at_quad(old_pressure, ele)))

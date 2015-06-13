@@ -45,6 +45,10 @@ module state_module
 
   private
 
+  type state_type_pointer
+     type(state_type), pointer :: ptr
+  end type state_type_pointer
+
   type state_type
      !!< This type allows sets of fields and meshes to be passed around
      !!< together and retrieved by name.
@@ -65,10 +69,12 @@ module state_module
           vector_names=>null(), scalar_names=>null(), mesh_names=>null(), &
           halo_names=>null(), tensor_names=>null(), &
           csr_sparsity_names=>null(), csr_matrix_names=>null(), &
-          block_csr_matrix_names=>null(), petsc_csr_matrix_names=>null()
+          block_csr_matrix_names=>null(), petsc_csr_matrix_names=>null(),&
+          child_state_names=>null()
      type(vector_field_pointer), dimension(:), pointer :: vector_fields=>null()
      type(tensor_field_pointer), dimension(:), pointer :: tensor_fields=>null()
      type(scalar_field_pointer), dimension(:), pointer :: scalar_fields=>null()
+     type(state_type_pointer), dimension(:), pointer :: child_states=>null()
      type(mesh_pointer), dimension(:), pointer :: meshes=>null()
      type(halo_pointer), dimension(:), pointer :: halos=>null()
      type(csr_sparsity_pointer), dimension(:), pointer :: csr_sparsities => null()
@@ -91,7 +97,7 @@ module state_module
        insert_and_alias_scalar_field, insert_and_alias_vector_field, insert_and_alias_tensor_field, &
        insert_and_alias_csr_matrix, insert_and_alias_block_csr_matrix, insert_and_alias_mesh, &
        insert_and_alias_halo, insert_and_alias_csr_sparsity, insert_petsc_csr_matrix, &
-       insert_and_alias_petsc_csr_matrix
+       insert_and_alias_petsc_csr_matrix, insert_state
   end interface
 
   interface extract_scalar_field
@@ -107,6 +113,11 @@ module state_module
   interface extract_tensor_field
      module procedure extract_tensor_field, extract_tensor_field_by_index
   end interface
+
+  interface extract_child_state
+     module procedure extract_state_from_state,&
+          extract_or_create_state_from_state
+  end interface extract_child_state
 
   interface extract_mesh
      module procedure extract_mesh_from_one, extract_mesh_from_any, extract_mesh_by_index
@@ -165,7 +176,7 @@ module state_module
   
   public state_type, deallocate, insert, nullify
   public field_rank, extract_scalar_field, extract_vector_field, extract_tensor_field
-  public extract_field_mesh, extract_mesh, extract_halo
+  public extract_field_mesh, extract_mesh, extract_halo, extract_child_state
   public extract_csr_sparsity, extract_csr_matrix, extract_block_csr_matrix, extract_petsc_csr_matrix
   public has_scalar_field, has_vector_field, has_tensor_field, has_mesh, has_halo
   public has_csr_sparsity, has_csr_matrix, has_block_csr_matrix, has_petsc_csr_matrix
@@ -185,6 +196,7 @@ module state_module
   type(vector_field), save, target :: fake_vector_field
   type(scalar_field), save, target :: fake_scalar_field
   type(tensor_field), save, target :: fake_tensor_field
+  type(state_type), save, target :: fake_state_type
   type(mesh_type), save, target :: fake_mesh
   type(halo_type), save, target :: fake_halo
   type(csr_sparsity), save, target :: fake_csr_sparsity
@@ -201,6 +213,14 @@ contains
     type(state_type), intent(inout) :: state
     integer :: i
 
+
+    if (associated(state%child_states)) then
+       do i=1,size(state%child_states)
+          call deallocate(state%child_states(i)%ptr)
+          deallocate(state%child_states(i)%ptr)
+       end do
+       deallocate(state%child_states)
+    end if
     if (associated(state%vector_names)) then
        deallocate(state%vector_names)
     end if
@@ -215,6 +235,9 @@ contains
     end if
     if (associated(state%tensor_names)) then
        deallocate(state%tensor_names)
+    end if
+    if (associated(state%child_state_names)) then
+       deallocate(state%child_state_names)
     end if
     if (associated(state%csr_sparsity_names)) then
        deallocate(state%csr_sparsity_names)
@@ -329,6 +352,7 @@ contains
     state%vector_fields=>null()
     state%tensor_fields=>null()
     state%scalar_fields=>null()
+    state%child_states=>null()
     state%meshes=>null()
     state%halos=>null()
     state%csr_sparsities=>null()
@@ -347,6 +371,71 @@ contains
     state%option_path = trim(path)
 
   end subroutine set_option_path
+
+  subroutine insert_state(state, child_state, name)
+    !!< Insert a child state into state.
+    !!<
+    !!< If a field with this name is already present then it is replaced.
+    type(state_type), intent(inout) :: state
+    type(state_type), intent(inout), target :: child_state
+    character(len=*), intent(in) :: name
+    
+    type(state_type_pointer), dimension(:), pointer :: tmp_child_states
+    character(len=FIELD_NAME_LEN), dimension(:), pointer :: tmp_names
+
+    integer :: i
+    integer :: old_size
+
+    if (.not.associated(state%child_states)) then
+       ! Special case first entry.
+       allocate(state%child_states(1))
+!       allocate(state%child_states(1)%ptr)
+!       call nullify(state%child_states(1)%ptr)
+       allocate(state%child_state_names(1))
+
+       state%child_states(1)%ptr=>child_state
+       state%child_state_names(1) = name
+
+    else
+       
+       ! Check if the name is already present.
+       do i=1,size(state%child_states)
+          if (trim(name)==trim(state%child_state_names(i))) then
+             ! The name is present!
+!             call incref(child_state)
+             call deallocate(state%child_states(i)%ptr)
+!             allocate(state%child_states(i)%ptr)
+             state%child_states(i)%ptr => child_state
+             return
+          end if
+       end do
+
+       ! If we get to here then this is a new field.
+       tmp_child_states=>state%child_states
+       tmp_names=>state%child_state_names
+
+       old_size=size(tmp_child_states)
+
+       allocate(state%child_states(old_size+1))
+ !      allocate(state%child_states(old_size+1)%ptr)
+       allocate(state%child_state_names(old_size+1))
+    
+       forall (i=1:old_size)
+          state%child_states(i)%ptr=>tmp_child_states(i)%ptr
+       end forall
+
+       state%child_state_names(1:old_size) = tmp_names
+       state%child_states(old_size+1)%ptr => child_state
+       state%child_state_names(old_size+1) = name
+
+!       call incref(child_state)
+
+       deallocate(tmp_child_states)
+       deallocate(tmp_names)
+
+    end if
+
+  end subroutine insert_state
 
   subroutine insert_tensor_field(state, field, name)
     !!< Insert a tensor field into state.
@@ -1520,6 +1609,83 @@ contains
     end if
     
   end function extract_tensor_field
+
+  function extract_or_create_state_from_state(state, name,&
+       insert_if_absent) result(return_state)
+
+    !!< Return a pointer to the embedded state with the correct name.
+    type(state_type), pointer :: return_state
+    type(state_type), intent(inout) :: state
+    character(len=*), intent(in) :: name
+    logical, intent(in) :: insert_if_absent
+
+    integer :: i
+
+    if (associated(state%child_states)) then
+       do i=1,size(state%child_states)
+          if (trim(name)==trim(state%child_state_names(i))) then
+             ! Found the right field
+             
+             return_state=>state%child_states(i)%ptr
+             return
+          end if
+       end do
+    end if
+       
+    ! We didn't find name so we make it instead
+    if (insert_if_absent) then
+       allocate(return_state)
+       call nullify(return_state)
+       return_state%name=name
+       call insert(state,return_state,name)
+       return_state=>extract_state_from_state(state, name)
+       return
+    else
+      if (associated(state%child_states)) then
+        do i=1,size(state%child_state_names)
+          ewrite(-1,*) "i: ", i, " -- ", state%child_state_names(i)
+        end do
+      end if
+      FLExit(trim(name)//" is not a child state in this state") 
+   end if
+  end function extract_or_create_state_from_state
+
+  function extract_state_from_state(state, name, stat) result(return_state)
+    !!< Return a pointer to the embedded state with the correct name.
+    type(state_type), pointer :: return_state
+    type(state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    integer, intent(out), optional :: stat
+    
+    integer :: i
+
+    if (present(stat)) stat=0
+
+    call nullify(fake_state_type)
+    return_state => fake_state_type
+
+    if (associated(state%child_states)) then
+       do i=1,size(state%child_states)
+          if (trim(name)==trim(state%child_state_names(i))) then
+             ! Found the right field
+             return_state=>state%child_states(i)%ptr
+             return
+          end if
+       end do
+    end if
+       
+    ! We didn't find name!
+    if (present(stat)) then
+       stat=1
+    else
+      if (associated(state%child_states)) then
+        do i=1,size(state%child_state_names)
+          ewrite(-1,*) "i: ", i, " -- ", state%child_state_names(i)
+        end do
+      end if
+      FLExit(trim(name)//" is not a child state in this state") 
+    end if
+  end function extract_state_from_state
 
   function extract_from_one_vector_field(state, name, stat) result (field)
     !!< Return a pointer to the vector field with the correct name.

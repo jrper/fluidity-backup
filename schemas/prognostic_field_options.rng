@@ -36,13 +36,13 @@ want this.</a:documentation>
               </optional>
             </element>
           </optional>
-          <ref name="input_choice_real"/>
+          <ref name="input_choice_real_plus_field"/>
         </element>
         <element name="type">
           <attribute name="name">
             <value>neumann</value>
           </attribute>
-          <ref name="input_choice_real"/>
+          <ref name="input_choice_real_plus_field"/>
         </element>
         <ref name="robin_bc_scalar"/>
         <element name="type">
@@ -99,7 +99,7 @@ a boundary when solving the advection-diffusion equation.</a:documentation>
           <attribute name="name">
             <value>flux</value>
           </attribute>
-          <ref name="input_choice_real"/>
+          <ref name="input_choice_real_plus_field"/>
         </element>
       </choice>
     </element>
@@ -284,65 +284,190 @@ elements when buoyancy is a discontinuous field.</a:documentation>
         </choice>
       </element>
     </optional>
-    <optional>
-      <element name="scalar_field">
-        <a:documentation>Source term. If the scalar field to be 
+    <zeroOrMore>
+      <choice>
+        <element name="scalar_field">
+          <a:documentation>Source term. If the scalar field to be 
 solved for is subcycled then variations 
 in this source field across the subcycled 
 time steps are not considered.</a:documentation>
-        <attribute name="name">
-          <value>Source</value>
-        </attribute>
-        <attribute name="rank">
-          <value>0</value>
-        </attribute>
-        <choice>
-          <element name="prescribed">
-            <ref name="prescribed_scalar_field_no_adapt"/>
-          </element>
-          <element name="diagnostic">
-            <choice>
-              <ref name="scalar_python_diagnostic_algorithm"/>
-              <ref name="internal_algorithm"/>
-            </choice>
-            <optional>
-              <element name="add_directly_to_rhs">
-                <a:documentation>Add the source field directly to the 
+          <attribute name="name">
+            <value>Source</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Sources</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <optional>
+                <element name="add_directly_to_rhs">
+                  <a:documentation>Add the source field directly to the 
 matrix system right hand side. To be 
 consistent this term should be tested 
 using the function space that 
 is used for the spatial discretisation.</a:documentation>
-                <ref name="comment"/>
-              </element>
-            </optional>
-            <ref name="diagnostic_scalar_field_no_adapt"/>
-          </element>
-        </choice>
-      </element>
-    </optional>
-    <optional>
-      <element name="scalar_field">
+                  <ref name="comment"/>
+                </element>
+              </optional>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <a:documentation>Multiple Source term. Each source term of a given
+field must have a unique name. If the scalar field to be 
+solved for is subcycled then variations 
+in this source field across the subcycled 
+time steps are not considered.</a:documentation>
+          <attribute name="name">
+            <data type="string" datatypeLibrary=""/>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Sources</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <optional>
+                <element name="add_directly_to_rhs">
+                  <a:documentation>Add the source field directly to the 
+matrix system right hand side. To be 
+consistent this term should be tested 
+using the function space that 
+is used for the spatial discretisation.</a:documentation>
+                  <ref name="comment"/>
+                </element>
+              </optional>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+      </choice>
+    </zeroOrMore>
+    <zeroOrMore>
+      <choice>
         <a:documentation>Absorption term</a:documentation>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>Absorption</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Absorptions</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <attribute name="name">
+            <data type="string" datatypeLibrary=""/>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>Absorptions</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+      </choice>
+    </zeroOrMore>
+    <zeroOrMore>
+      <a:documentation>Relaxation term</a:documentation>
+      <element name="relaxation_term">
         <attribute name="name">
-          <value>Absorption</value>
+          <data type="string" datatypeLibrary=""/>
         </attribute>
-        <attribute name="rank">
-          <value>0</value>
-        </attribute>
-        <choice>
-          <element name="prescribed">
-            <ref name="prescribed_scalar_field_no_adapt"/>
-          </element>
-          <element name="diagnostic">
-            <choice>
-              <ref name="scalar_python_diagnostic_algorithm"/>
-              <ref name="internal_algorithm"/>
-            </choice>
-            <ref name="diagnostic_scalar_field_no_adapt"/>
-          </element>
-        </choice>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>RelaxationCoefficent</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>RelaxationCoefficients</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
+        <element name="scalar_field">
+          <attribute name="name">
+            <value>RelaxationValue</value>
+          </attribute>
+          <attribute name="rank">
+            <value>0</value>
+          </attribute>
+          <attribute name="type">
+            <value>RelaxationValues</value>
+          </attribute>
+          <choice>
+            <element name="prescribed">
+              <ref name="prescribed_scalar_field_no_adapt"/>
+            </element>
+            <element name="diagnostic">
+              <choice>
+                <ref name="scalar_python_diagnostic_algorithm"/>
+                <ref name="internal_algorithm"/>
+              </choice>
+              <ref name="diagnostic_scalar_field_no_adapt"/>
+            </element>
+          </choice>
+        </element>
       </element>
-    </optional>
+    </zeroOrMore>
     <optional>
       <element name="scalar_field">
         <a:documentation>Velocity at which this substance sinks through the water column.
@@ -2050,13 +2175,13 @@ want this.</a:documentation>
                 </optional>
               </element>
             </optional>
-            <ref name="input_choice_real"/>
+            <ref name="input_choice_real_plus_field"/>
           </element>
           <element name="type">
             <attribute name="name">
               <value>neumann</value>
             </attribute>
-            <ref name="input_choice_real"/>
+            <ref name="input_choice_real_plus_field"/>
           </element>
           <ref name="robin_bc_scalar"/>
           <element name="type">
@@ -2279,7 +2404,7 @@ requires a distinct name for the options dictionary.</a:documentation>
               <value>dirichlet</value>
             </attribute>
             <choice>
-              <ref name="input_choice_real_contents"/>
+              <ref name="input_choice_real_plus_field"/>
               <element name="from_file">
                 <oneOrMore>
                   <element name="tidal">
@@ -2327,7 +2452,7 @@ Set the name of the prescribed NEMO pressure scalar field below.</a:documentatio
             <attribute name="name">
               <value>neumann</value>
             </attribute>
-            <ref name="input_choice_real"/>
+            <ref name="input_choice_real_plus_field"/>
           </element>
           <ref name="robin_bc_scalar"/>
         </choice>

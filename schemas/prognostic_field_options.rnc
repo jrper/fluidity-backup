@@ -27,11 +27,11 @@ scalar_boundary_conditions =
                      empty
                   }?
                }?,
-               input_choice_real
+               input_choice_real_plus_field
             }|
             element type {
                attribute name { "neumann" },
-               input_choice_real
+               input_choice_real_plus_field
             }|
             robin_bc_scalar|
             ## Prevent the field from fluxing out of the boundary.
@@ -75,7 +75,7 @@ scalar_boundary_conditions =
             ## a boundary when solving the advection-diffusion equation.
             element type {
                attribute name { "flux" },
-               input_choice_real
+               input_choice_real_plus_field
             }
          )
       }
@@ -224,51 +224,146 @@ prognostic_scalar_field =
             }
          )
       }?,
-      ## Source term. If the scalar field to be 
-      ## solved for is subcycled then variations 
-      ## in this source field across the subcycled 
-      ## time steps are not considered.
-      element scalar_field {
-         attribute name { "Source" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt
-            }|
-            element diagnostic {
-               (
-                  scalar_python_diagnostic_algorithm |
-                  internal_algorithm
-               ),
-               ## Add the source field directly to the 
-               ## matrix system right hand side. To be 
-               ## consistent this term should be tested 
-               ## using the function space that 
-               ## is used for the spatial discretisation.
-               element add_directly_to_rhs {
-                  comment
-               }?,
-               diagnostic_scalar_field_no_adapt
-            } 
-         )
-      }?,
+      (
+         ## Source term. If the scalar field to be 
+         ## solved for is subcycled then variations 
+         ## in this source field across the subcycled 
+         ## time steps are not considered.
+         element scalar_field {
+            attribute name { "Source" },
+            attribute rank { "0" },
+            attribute type { "Sources"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  ## Add the source field directly to the 
+                  ## matrix system right hand side. To be 
+                  ## consistent this term should be tested 
+                  ## using the function space that 
+                  ## is used for the spatial discretisation.
+                  element add_directly_to_rhs {
+                     comment
+                  }?,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }|
+         ## Multiple Source term. Each source term of a given
+         ## field must have a unique name. If the scalar field to be 
+         ## solved for is subcycled then variations 
+         ## in this source field across the subcycled 
+         ## time steps are not considered.
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            attribute type { "Sources"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  ## Add the source field directly to the 
+                  ## matrix system right hand side. To be 
+                  ## consistent this term should be tested 
+                  ## using the function space that 
+                  ## is used for the spatial discretisation.
+                  element add_directly_to_rhs {
+                     comment
+                  }?,
+                  diagnostic_scalar_field_no_adapt
+               } 
+            )
+         }
+      )*,
       ## Absorption term
-      element scalar_field {
-         attribute name { "Absorption" },
-         attribute rank { "0" },
-         (
-            element prescribed {
-               prescribed_scalar_field_no_adapt
-            }|
-            element diagnostic {
+      (
+         element scalar_field {
+            attribute name { "Absorption" },
+            attribute rank { "0" },
+            attribute type { "Absorptions"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
+         }|
+         element scalar_field {
+            attribute name { string },
+            attribute rank { "0" },
+            attribute type { "Absorptions"},
+            (
+               element prescribed {
+                  prescribed_scalar_field_no_adapt
+               }|
+               element diagnostic {
+                  (
+                     scalar_python_diagnostic_algorithm |
+                     internal_algorithm
+                  ),
+                  diagnostic_scalar_field_no_adapt
+               }
+            )
+         }
+      )*,
+
+      ## Relaxation term
+      (
+         element relaxation_term{
+            attribute name { string },
+            element scalar_field {
+               attribute name { "RelaxationCoefficent" },
+               attribute rank { "0" },
+               attribute type { "RelaxationCoefficients"},
                (
-                  scalar_python_diagnostic_algorithm |
-                  internal_algorithm
-               ),
-               diagnostic_scalar_field_no_adapt
+                  element prescribed {
+                     prescribed_scalar_field_no_adapt
+                  }|
+                  element diagnostic {
+                     (
+                        scalar_python_diagnostic_algorithm |
+                        internal_algorithm
+                     ),
+                     diagnostic_scalar_field_no_adapt
+                  }
+               )
+            },
+            element scalar_field {
+               attribute name { "RelaxationValue" },
+               attribute rank { "0" },
+               attribute type { "RelaxationValues"},
+               (
+                  element prescribed {
+                     prescribed_scalar_field_no_adapt
+                  }|
+                  element diagnostic {
+                     (
+                        scalar_python_diagnostic_algorithm |
+                        internal_algorithm
+                     ),
+                     diagnostic_scalar_field_no_adapt
+                  }
+               )
             }
-         )
-      }?,
+         }*
+      ),
+
       ## Velocity at which this substance sinks through the water column.
       ## 
       ## This velocity is in the direction of gravity so if the substance
@@ -1682,11 +1777,11 @@ prognostic_foam_velocity_potential_field =
                      empty
                   }?
                }?,
-               input_choice_real
+               input_choice_real_plus_field
             }|
             element type {
                attribute name { "neumann" },
-               input_choice_real
+               input_choice_real_plus_field
             }|
             robin_bc_scalar|
             ## Prevent the field from fluxing out of the boundary.
@@ -1857,7 +1952,7 @@ prognostic_free_surface_field =
             element type {
                attribute name { "dirichlet" },
                (
-                  input_choice_real_contents|
+                  input_choice_real_plus_field|
                   element from_file {
                      element tidal {
                         attribute file_name { string },
@@ -1879,7 +1974,7 @@ prognostic_free_surface_field =
             }|
             element type {
                attribute name { "neumann" },
-               input_choice_real
+               input_choice_real_plus_field
             }|
             robin_bc_scalar
          )
