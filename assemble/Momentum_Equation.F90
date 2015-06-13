@@ -69,7 +69,7 @@
       use state_fields_module
       use Tidal_module
       use Coordinates
-      use diagnostic_fields, only: calculate_diagnostic_variable
+      use diagnostic_fields, only: calculate_diagnostic_variable, calculate_galerkin_projection
       use dgtools, only: dg_apply_mass
       use slope_limiters_dg
       use implicit_solids
@@ -538,6 +538,10 @@
                call calculate_hydrostatic_pressure_gradient(state(istate))
             end if
             if(has_scalar_field(state(istate), gp_name)) then
+               call calculate_geostrophic_pressure_options(state(istate))
+            end if
+
+             if(has_scalar_field(state(istate),"HPJRP")) then
                call calculate_geostrophic_pressure_options(state(istate))
             end if
 
@@ -1405,19 +1409,37 @@
             ! a halo_update isn't necessary as this is just a rhs
             ! contribution
             if (have_option('/ocean_forcing/tidal_forcing') .or. &
-                &have_option('/ocean_forcing/shelf')) then
-            ewrite(1,*) "shelf: Entering compute_pressure_and_tidal_gradient"
-              call compute_pressure_and_tidal_gradient(state(istate), delta_u, ct_m(istate)%ptr, p_theta, x)
-            else if (has_scalar_field(state(istate), "HydroStaticBalancePressure")) then
-               hb_pressure => extract_scalar_field(state(istate), "HydroStaticBalancePressure")
-              call allocate(combined_p, p_theta%mesh, "CombinedPressure")
-              do node=1,node_count(p_theta)
-                call set(combined_p, node, node_val(p_theta, node) - node_val(hb_pressure, node))
-              end do
-              call mult_T(delta_u, ct_m(istate)%ptr, combined_p)
-              call deallocate(combined_p)
+                 &have_option('/ocean_forcing/shelf')) then
+               ewrite(1,*) "shelf: Entering compute_pressure_and_tidal_gradient"
+               call compute_pressure_and_tidal_gradient(state(istate), delta_u, ct_m(istate)%ptr, p_theta, x)
+            else if (has_scalar_field(state(istate),&
+                 "HydroStaticBalancePressure") .or.&
+                 has_scalar_field(state(istate), "HPJRP")) then
+               if (has_scalar_field(state(istate),&
+                    "HydroStaticBalancePressure")) then
+                  hb_pressure => extract_scalar_field(state(istate),&
+                       "HydroStaticBalancePressure")
+               else
+                  allocate(hb_pressure)
+                  call allocate(hb_pressure,p_theta%mesh,&
+                       "HydrostaticBalancePressure")
+                  call zero(hb_pressure)
+                  call calculate_galerkin_projection(state(istate),&
+                       extract_scalar_field(state, "HPJRP"),hb_pressure)
+               end if
+               call allocate(combined_p,p_theta%mesh,&
+                       "PressurePerturbation")
+               call set(combined_p,p_theta)
+               call addto(combined_p,hb_pressure,scale=-1.0)
+               call mult_T(delta_u, ct_m(istate)%ptr, combined_p)
+               call deallocate(combined_p)
+               if (.not. has_scalar_field(state(istate),&
+                    "HydroStaticBalancePressure")) then
+                  call deallocate(hb_pressure)
+                  deallocate(hb_pressure)
+               end if
             else
-              call mult_T(delta_u, ct_m(istate)%ptr, p_theta)
+               call mult_T(delta_u, ct_m(istate)%ptr, p_theta)
             end if
 
             if (dg(istate)) then

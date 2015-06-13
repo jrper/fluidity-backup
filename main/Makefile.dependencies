@@ -34,6 +34,7 @@ Fluids.o ../include/fluids_module.mod: Fluids.F90 \
    ../include/auxilaryoptions.mod ../include/biology.mod \
    ../include/boundary_conditions.mod \
    ../include/boundary_conditions_from_options.mod ../include/checkpoint.mod \
+   ../include/compressible_projection.mod \
    ../include/conformity_measurement.mod ../include/detector_parallel.mod \
    ../include/diagnostic_children.mod ../include/diagnostic_fields_new.mod \
    ../include/diagnostic_fields_wrapper.mod \
@@ -48,6 +49,7 @@ Fluids.o ../include/fluids_module.mod: Fluids.F90 \
    ../include/iceshelf_meltrate_surf_normal.mod ../include/implicit_solids.mod \
    ../include/k_epsilon.mod ../include/memory_diagnostics.mod \
    ../include/meshdiagnostics.mod ../include/meshmovement.mod \
+   ../include/microphysics.mod \
    ../include/momentum_equation.mod ../include/multimaterial_module.mod \
    ../include/multiphase_module.mod ../include/parallel_tools.mod \
    ../include/populate_state_module.mod \

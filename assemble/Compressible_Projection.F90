@@ -40,6 +40,7 @@ module compressible_projection
   use state_fields_module
   use upwind_stabilisation
   use hydrostatic_pressure, only : hp_name, calculate_hydrostatic_pressure
+  use geostrophic_pressure
 
   implicit none 
 
@@ -49,7 +50,7 @@ module compressible_projection
   private
 
   public :: assemble_compressible_projection_cv, assemble_compressible_projection_cg, update_compressible_density
-  public :: compressible_projection_check_options
+  public :: compressible_projection_check_options, compressible_initialise
 
   ! Stabilisation schemes
   integer, parameter :: STABILISATION_NONE = 0, &
@@ -686,6 +687,10 @@ contains
        end if
     end if
 
+    if(has_scalar_field(state(1),"HPJRP")) then
+       call calculate_geostrophic_pressure_options(state(1))
+    end if
+
     ic_count=0
 
     sfield=>extract_scalar_field(state,"Density",stat)
@@ -708,7 +713,7 @@ contains
 
     select case(ic_count)
     case(0,1,2,4)
-       FLAbort("Need at least two initial conditions for some of  Density,Energy,Pressure")
+ !      FLAbort("Need at least two initial conditions for some of  Density,Energy,Pressure")
     case(3)
        ewrite(1,*) "Calculating initial pressure from other fields"
        sfield=>extract_scalar_field(state,"Pressure",stat)
@@ -725,7 +730,8 @@ contains
        call compressible_eos(state(1),pressure=sfield)
     end select
   end subroutine compressible_initialise       
-=======
+
+
   subroutine compressible_projection_check_options
 
     character(len=OPTION_PATH_LEN):: prognostic_pressure_path

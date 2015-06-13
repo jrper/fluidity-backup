@@ -61,6 +61,7 @@
     use Coordinates
     use multiphase_module
     use edge_length_module
+    use diagnostic_fields, only: calculate_galerkin_projection
 
     implicit none
 
@@ -108,6 +109,7 @@
     logical :: have_surfacetension
     logical :: have_coriolis
     logical :: have_geostrophic_pressure
+    logical :: have_hp_pressure
     logical :: have_temperature_dependent_viscosity
     logical :: have_les
     logical :: have_surface_fs_stabilisation
@@ -204,6 +206,7 @@
 
       type(scalar_field), pointer :: buoyancy
       type(scalar_field), pointer :: gp
+      type(scalar_field), pointer :: hp
       type(vector_field), pointer :: gravity
       type(vector_field), pointer :: oldu, nu, ug, source, absorption
       type(tensor_field), pointer :: viscosity
@@ -341,7 +344,7 @@
       ewrite_minmax(buoyancy)
 
       if (has_scalar_field(state,"HydroStaticBalanceDensity")) then
-        hb_buoyancy=>extract_scalar_field(state, "HydroStaticBalanceDensity")
+         hb_buoyancy=>extract_scalar_field(state, "HydroStaticBalanceDensity")
       else
         hb_buoyancy=>dummyscalar
       end if
@@ -455,13 +458,23 @@
          temperature => dummyscalar
       end if
 
-      have_geostrophic_pressure = has_scalar_field(state, "GeostrophicPressure")
+      have_geostrophic_pressure = has_scalar_field(state,"GeostrophicPressure")
       if(have_geostrophic_pressure) then
-        gp => extract_scalar_field(state, "GeostrophicPressure")
-        
-        ewrite_minmax(gp)
+         gp => extract_scalar_field(state, "GeostrophicPressure")
+
+         ewrite_minmax(gp)
       else
         gp => dummyscalar
+      end if
+
+      have_hp_pressure = has_scalar_field(state,"HPJRP") .and. .not.&
+           has_scalar_field(state,"HydroStaticBalanceDensity")
+      if(have_hp_pressure) then
+        hp=>extract_scalar_field(state, "HPJRP")
+
+        ewrite_minmax(hp)
+      else
+        hp => dummyscalar
       end if
 
       on_sphere = have_option('/geometry/spherical_earth/')
@@ -637,7 +650,7 @@
               source, absorption, buoyancy, hb_buoyancy, gravity, &
               viscosity, grad_u, &
               tnu, leonard, alpha, &
-              gp, surfacetension, &
+              gp, hp, surfacetension, &
               assemble_ct_matrix_here, on_sphere, depth, &
               alpha_u_field, abs_wd, temperature, nvfrac)
       end do element_loop
@@ -1072,7 +1085,7 @@
                                             source, absorption, buoyancy, hb_buoyancy, gravity, &
                                             viscosity, grad_u, &
                                             tnu, leonard, alpha, &
-                                            gp, surfacetension, &
+                                            gp, hp, surfacetension, &
                                             assemble_ct_matrix_here, on_sphere, depth, &
                                             alpha_u_field, abs_wd, temperature, nvfrac)
 
@@ -1106,6 +1119,7 @@
       real, intent(in)                  :: alpha
 
       type(scalar_field), intent(in) :: gp
+      type(scalar_field), intent(in) :: hp
       type(tensor_field), intent(in) :: surfacetension
 
       logical, intent(in) :: assemble_ct_matrix_here, on_sphere
@@ -1318,6 +1332,10 @@
       if(have_geostrophic_pressure) then
         call add_geostrophic_pressure_element_cg(ele, test_function, x, u, gp, detwei, rhs_addto)
       end if
+
+      if(have_hp_pressure) then
+        call add_hp_pressure_element_cg(ele, test_function, x, u, hp, gravity, detwei, rhs_addto)
+     end if
 
       ! Step 4: Insertion
 
@@ -2298,10 +2316,43 @@
       ! We assume here that gp is usually on a different mesh to u or p
       call transform_to_physical(x, ele, ele_shape(gp, ele), &
         & dshape = dgp_t)
-        
+
       rhs_addto = rhs_addto - shape_vector_rhs(test_function, ele_grad_at_quad(gp, ele, dgp_t), detwei)
       
     end subroutine add_geostrophic_pressure_element_cg
+
+    subroutine add_hp_pressure_element_cg(ele, test_function, x, u, hp,gravity,&
+         detwei, rhs_addto)
+      integer, intent(in) :: ele
+      type(element_type), intent(in) :: test_function
+      type(vector_field), intent(in) :: x
+      type(vector_field), intent(in) :: u, gravity
+      type(scalar_field), intent(in) :: hp
+      real, dimension(ele_ngi(u, ele)), intent(in) :: detwei
+      real, dimension(u%dim, ele_loc(u, ele)), intent(inout) :: rhs_addto
+      real, dimension(u%dim, ele_ngi(u, ele)) :: gravfix
+            
+      real, dimension(ele_loc(hp, ele), ele_ngi(hp, ele), mesh_dim(hp)) :: dhp_t
+      
+      integer :: i
+
+      ! Routine for hydrostatic pressure
+
+      ! We assume here that hp is usually on a different mesh to u or p
+      call transform_to_physical(x, ele, ele_shape(hp, ele), &
+        & dshape = dhp_t)
+       
+!      gravfix=ele_val_at_quad(gravity,ele)
+!      do i=1,u%dim
+!         gravfix(i,:)=gravfix(i,:)*sum(ele_val_at_quad(gravity,ele)&
+!              *ele_grad_at_quad(hp, ele, dhp_t),1)/sum(ele_val_at_quad(gravity,ele)**2,1)
+!      end do
+
+
+      rhs_addto = rhs_addto - shape_vector_rhs(test_function,&
+           ele_grad_at_quad(hp, ele, dhp_t),&
+           detwei)
+    end subroutine add_hp_pressure_element_cg
     
     function stiffness_matrix(dshape1, tensor, dshape2, detwei) result (matrix)
       !!< Calculates the stiffness matrix.

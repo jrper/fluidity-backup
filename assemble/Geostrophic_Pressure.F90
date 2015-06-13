@@ -212,7 +212,11 @@ contains
     
     ewrite(1, *) "In calculate_geostrophic_pressure_options"
 
+    if (has_scalar_field(state,"HPJRP")) then
+       lgp => extract_scalar_field(state, "HPJRP")
+    else
     lgp => extract_scalar_field(state, gp_name)
+    end if
     path = complete_field_path(lgp%option_path)
     
     assemble_matrix = do_assemble_matrix(state)
@@ -396,7 +400,7 @@ contains
     real :: gravity_magnitude
     logical :: have_density, have_hp, have_hpg
     type(scalar_field), pointer :: buoyancy, density, hp
-    type(scalar_field), target :: dummy_scalar
+    type(scalar_field), target :: dummy_scalar 
     type(vector_field), pointer :: gravity, hpg, positions, velocity
     type(vector_field), target :: dummy_vector
     
@@ -436,7 +440,16 @@ contains
     if(include_buoyancy) then
       call get_option("/physical_parameters/gravity/magnitude", gravity_magnitude)
       
-      buoyancy => extract_scalar_field(state, "VelocityBuoyancyDensity")
+      if (trim(gp%name)=='HPJRP') then
+         if (has_scalar_field(state, "HydroStaticBalanceDensity")) then
+            buoyancy => extract_scalar_field(state, "HydroStaticBalanceDensity")
+         else
+            buoyancy => extract_scalar_field(state, "IteratedDensity")
+         end if
+      else
+         buoyancy => extract_scalar_field(state, "VelocityBuoyancyDensity")
+      end if
+
       assert(ele_count(buoyancy) == ele_count(gp_rhs))
       ewrite_minmax(buoyancy)
       

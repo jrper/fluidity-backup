@@ -1066,7 +1066,7 @@ contains
         ! construct rhs
         p=>extract_scalar_field(state(1), "Pressure")
 
-        call allocate(complete_p, p%mesh, "Full Pressure", field_type=FIELD_TYPE_CONSTANT)
+        call allocate(complete_p, p%mesh, "Full Pressure")
         call zero(complete_p)
         ! Set up for possible hydrostatic contribution
         do i = 1, size(state)
