@@ -35,7 +35,6 @@ module equation_of_state
   use spud
   use sediment, only: get_sediment_name, get_nSediments
   use boundary_conditions, only: set_dirichlet_consistent, get_boundary_condition_count
-  use petsc_solve_state_module
   use sparsity_patterns_meshes
   use transform_elements, only: transform_to_physical
   use diagnostic_fields, only : calculate_galerkin_projection
