@@ -39,15 +39,20 @@ module advection_diffusion_cg
   use boundary_conditions_from_options
   use field_options
   use fldebug
-  use global_parameters, only : FIELD_NAME_LEN, OPTION_PATH_LEN
+  use global_parameters, only : FIELD_NAME_LEN, OPTION_PATH_LEN, COLOURING_CG1
   use profiler
   use spud
   use petsc_solve_state_module
   use state_module
   use upwind_stabilisation
   use sparsity_patterns_meshes
-  use hydrostatic_pressure, only: hp_name
   use microphysics
+  use porous_media
+  use sparse_tools_petsc
+  use colouring
+#ifdef _OPENMP
+  use omp_lib
+#endif
   
   implicit none
   
@@ -213,7 +218,7 @@ contains
     type(scalar_field), intent(inout) :: t
     type(csr_matrix), intent(inout) :: matrix
     type(scalar_field), intent(inout) :: rhs
-    type(state_type), intent(in) :: state
+    type(state_type), intent(inout) :: state
     real, intent(in) :: dt
     character(len = *), optional, intent(in) :: velocity_name
 
@@ -231,9 +236,18 @@ contains
     type(scalar_field), target  :: dummydensity, complete_pressure
     type(scalar_field), pointer :: density, olddensity
     character(len = FIELD_NAME_LEN) :: density_name
-    type(scalar_field), pointer :: pressure, hp
-        
-    type(element_type) :: supg_element
+    type(scalar_field), pointer :: pressure
+    ! Porosity field
+    type(scalar_field) :: porosity_theta
+
+    !! Coloring  data structures for OpenMP parallization
+    type(integer_set), dimension(:), pointer :: colours
+    integer :: clr, nnid, len, ele
+    integer :: num_threads, thread_num
+    !! Did we successfully prepopulate the transform_to_physical_cache?
+    logical :: cache_valid
+
+    type(element_type), dimension(:), allocatable :: supg_element
   
     ewrite(1, *) "In assemble_advection_diffusion_cg"
     
@@ -245,7 +259,12 @@ contains
     else
       lvelocity_name = "NonlinearVelocity"
     end if
-    
+
+#ifdef _OPENMP
+    num_threads = omp_get_max_threads()
+#else
+    num_threads = 1
+#endif
     ! Step 1: Pull fields out of state
     
     ! Coordinate
@@ -454,6 +473,7 @@ contains
       ewrite(2,*) "Not moving the mesh"
     end if
     
+    allocate(supg_element(num_threads))
     if(have_option(trim(t%option_path) // "/prognostic/spatial_discretisation/continuous_galerkin/stabilisation/streamline_upwind")) then
       ewrite(2, *) "Streamline upwind stabilisation"
       stabilisation_scheme = STABILISATION_STREAMLINE_UPWIND
@@ -468,8 +488,10 @@ contains
       call get_upwind_options(trim(t%option_path) // "/prognostic/spatial_discretisation/continuous_galerkin/stabilisation/streamline_upwind_petrov_galerkin", &
           & nu_bar_scheme, nu_bar_scale)
       ! Note this is not mixed mesh safe (but then nothing really is)
-      ! You actually need 1 supg_element per thread.
-      supg_element=make_supg_element(ele_shape(t,1)) 
+      ! You need 1 supg_element per thread.
+      do i = 1, num_threads
+         supg_element(i)=make_supg_element(ele_shape(t,1))
+      end do
       if(move_mesh) then
         FLExit("Haven't thought about how mesh movement works with stabilisation yet.")
       end if
@@ -517,17 +539,6 @@ contains
                       
       pressure=>extract_scalar_field(state, "Pressure")
 
-      call allocate(complete_pressure,pressure%mesh,"CompletePressure")
-      if (has_scalar_field(state,hp_name)) then
-         hp => extract_scalar_field(state,hp_name)
-         call remap_field(hp,complete_pressure)
-      else
-         call zero(complete_pressure)
-      end if
-
-      call addto(complete_pressure,pressure)
-      pressure => complete_pressure
-
       ewrite_minmax(pressure)
 
     case default
@@ -539,15 +550,47 @@ contains
     call zero(matrix)
     call zero(rhs)
     
-    do i = 1, ele_count(t)
-      call assemble_advection_diffusion_element_cg(i, t, matrix, rhs, &
+    call profiler_tic(t, "advection_diffusion_loop_overhead")
+
+#ifdef _OPENMP
+    cache_valid = prepopulate_transform_cache(positions)
+    assert(cache_valid)
+#endif
+
+    call get_mesh_colouring(state, t%mesh, COLOURING_CG1, colours)
+    call profiler_toc(t, "advection_diffusion_loop_overhead")
+
+    call profiler_tic(t, "advection_diffusion_loop")
+
+    !$OMP PARALLEL DEFAULT(SHARED) &
+    !$OMP PRIVATE(clr, len, nnid, ele, thread_num)
+
+#ifdef _OPENMP    
+    thread_num = omp_get_thread_num()
+#else
+    thread_num=0
+#endif
+    colour_loop: do clr = 1, size(colours)
+
+      len = key_count(colours(clr))
+      !$OMP DO SCHEDULE(STATIC)
+      element_loop: do nnid = 1, len
+         ele = fetch(colours(clr), nnid)
+
+         call assemble_advection_diffusion_element_cg(ele, t, matrix, rhs, &
                                         positions, old_positions, new_positions, &
                                         velocity, grid_velocity, &
                                         sources, absorptions,&
                                         relax_values, relax_coeffs, diffusivity, &
                                         density, olddensity, pressure,&
-                                        supg_element)
-    end do
+                                        supg_element(thread_num+1))
+      end do element_loop
+      !$OMP END DO
+      
+   end do colour_loop
+   !$OMP END PARALLEL
+   
+   call profiler_toc(t, "advection_diffusion_loop")
 
     ! Add the source directly to the rhs if required 
     ! which must be included before dirichlet BC's.
@@ -601,12 +644,6 @@ contains
     
     call deallocate(velocity)
     call deallocate(dummydensity)
-    if (equation_type .eq. FIELD_EQUATION_INTERNALENERGY) then
-       call deallocate(complete_pressure)
-    end if
-
-    if (stabilisation_scheme == STABILISATION_SUPG) &
-         call deallocate(supg_element)
 
     if (have_source) then
        if (sources%name=="Temporary") then
@@ -619,6 +656,15 @@ contains
        end if
     end if
 
+    if (stabilisation_scheme == STABILISATION_SUPG) then
+       do i = 1, num_threads
+          call deallocate(supg_element(i))
+       end do
+    end if
+    deallocate(supg_element)
+
+    call deallocate(porosity_theta)
+    
     ewrite(1, *) "Exiting assemble_advection_diffusion_cg"
     
   end subroutine assemble_advection_diffusion_cg
@@ -783,7 +829,6 @@ contains
         if(have_diffusivity) then
           call supg_test_function(supg_shape, t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, diff_q = ele_val_at_quad(diffusivity, ele), &
             & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
-          test_function = supg_shape
         else
           call supg_test_function(supg_shape, t_shape, dt_t, ele_val_at_quad(velocity, ele), j_mat, &
             & nu_bar_scheme = nu_bar_scheme, nu_bar_scale = nu_bar_scale)
