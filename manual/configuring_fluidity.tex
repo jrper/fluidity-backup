@@ -518,8 +518,8 @@ def val(X, t):
 \index{Coriolis!options}
 
 \fluidity\ supports the specification of the Coriolis term (section
-\ref{sec:coriolis}) in a number of different ways. The following options
-are available:
+\ref{sec:coriolis}) in a number of different ways. Note that only the  \option{specified\_axis} option will include the centrifugal acceleration term explicitly. The following options
+are available: 
 
 \begin{enumerate}
   \item \option{f\_plane} -- a single float is prescribed which corresponds to
@@ -538,6 +538,7 @@ are available:
  \item \option{python\_f\_plane} -- time dependent python input
        prescribing a single float which corresponds to
        $f_0$ in \eqref{eq:f-plane} - see example \ref{ex:python_f_plane}.
+ \item \option{specified\_axis} -- specify both the angular speed of the rotation, $\Omega$ and a point on the axis around which the rotation occurs (still assumed to be parallel to the $\bm{z}$ axis). As stated above, this adds the centrifugal force to the body forces applied in the simulation.
 \end{enumerate}
 
 Recall that there is a factor $2$ relationship between $f$ and $\Omega$
