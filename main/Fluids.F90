@@ -101,12 +101,13 @@ module fluids_module
 #endif
   use multiphase_module
   use lagrangian_biology
-  use lebiology_python
+  use lebiology_python  
   use detectors
   use detector_data_types
   use detector_parallel
   use detector_move_lagrangian
   use Profiler
+  use tictoc
   use momentum_diagnostic_fields, only: calculate_densities
   use sediment_diagnostics, only: calculate_sediment_flux
 
@@ -474,6 +475,8 @@ contains
 
        if(simulation_completed(current_time, timestep)) exit timestep_loop
 
+       call tic(TICTOC_ID_TIMESTEP)
+
        if( &
                                 ! Do not dump at the start of the simulation (this is handled by write_state call earlier)
             & current_time > simulation_start_time &
@@ -518,10 +521,8 @@ contains
        if(use_sub_state()) call set_boundary_conditions_values(sub_state, shift_time=.true.)
 
        ! evaluate prescribed fields at time = current_time+dt
-       call profiler_tic("/fluidity::set_prescribed_field_values")
        call set_prescribed_field_values(state, exclude_interpolated=.true., &
             exclude_nonreprescribed=.true., time=current_time+dt)
-       call profiler_toc("/fluidity::set_prescribed_field_values")
 
        if(use_sub_state()) call set_full_domain_prescribed_fields(state,time=current_time+dt)
 
@@ -903,6 +904,10 @@ contains
 
        end if
 
+       call toc(TICTOC_ID_TIMESTEP)
+       call tictoc_report(2, TICTOC_ID_TIMESTEP)
+       call tictoc_clear(TICTOC_ID_TIMESTEP)
+
        if(simulation_completed(current_time)) exit timestep_loop
 
        ! ******************
@@ -925,7 +930,7 @@ contains
 
              if(have_option("/io/stat/output_after_adapts")) call write_diagnostics(state, current_time, dt, timestep)
              call run_diagnostics(state)
-
+ 
              ! ml805 refresh the element volume caching for LE Biology
              call cache_element_volumes(state(1))
  
