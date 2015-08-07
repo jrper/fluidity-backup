@@ -38,6 +38,9 @@ module surface_integrals
   use parallel_fields
   use spud
   use state_module
+  use FEFields
+  use solvers
+  use sparsity_patterns_meshes
   !use smoothing_module
 
   implicit none
@@ -46,7 +49,7 @@ module surface_integrals
   
   public :: calculate_surface_integral, gradient_normal_surface_integral, &
     & normal_surface_integral, surface_integral, surface_gradient_normal, &
-    & surface_normal_distance_sele
+    & surface_normal_distance_sele, surface_weighted_normal
   public :: diagnostic_body_drag
   
   interface integrate_over_surface_element
@@ -370,6 +373,121 @@ contains
     end function include_face
     
   end subroutine surface_gradient_normal
+
+  subroutine surface_weighted_normal(state,source, positions, output, surface_ids,solver_option_path)
+    !!< Return a field containing:
+    !!<   /
+    !!<   | grad source dot dn
+    !!<   /
+    !!< The output field is P0 over the surface. Here, output is a volume field,
+    !!< hence there will be errors at edges.
+  
+    type(state_type),   intent(inout) :: state
+    type(scalar_field), intent(in) :: source
+    type(vector_field), intent(in) :: positions
+    type(vector_field), intent(inout) :: output
+    integer, dimension(:), optional, intent(in) :: surface_ids
+    character(len=*), intent(in), optional:: solver_option_path
+    
+    integer :: i
+    real, dimension(mesh_dim(positions),face_loc(output,1)) :: face_integral
+    type(vector_field) :: rhs, suboutput, subpositions
+    type(csr_matrix) :: mass
+    type(csr_sparsity), pointer :: temp_mass_sparsity
+
+    type(mesh_type) :: surface_mesh
+    integer, dimension(:), pointer:: surface_nodes
+    
+    if(.not. output%mesh == positions%mesh) then
+      FLAbort("Surface weighted normal must be defined on the coordinate mesh.")
+    end if
+    
+    call zero(output)
+
+    call create_surface_mesh(surface_mesh, surface_nodes, output%mesh,&
+         surface_ids=surface_ids, name=trim(output%mesh%name)//"SurfaceMesh")
+
+    call allocate(rhs,mesh_dim(output),surface_mesh,name='RHS')
+    call zero(rhs)
+    call allocate(suboutput,mesh_dim(output),surface_mesh,name='Suboutput')
+    call allocate(subpositions,mesh_dim(output),surface_mesh,&
+         name='Subcoordinate')
+    subpositions%val=node_val(positions,surface_nodes)
+
+    do i = 1, surface_element_count(output)
+      if(.not. include_face(i, source, surface_ids = surface_ids)) cycle  
+      call weighted_normal_surface_integral_face(source, i, positions, face_integral,face_shape(output,i))
+      call addto(rhs, ele_nodes(surface_mesh,i),face_integral)
+    end do
+
+    temp_mass_sparsity => get_csr_sparsity_firstorder(state,&
+         surface_mesh, surface_mesh)
+
+    call allocate(mass,temp_mass_sparsity, name='Submass')
+    call compute_mass(subpositions,surface_mesh,mass)
+
+    call petsc_solve(suboutput,mass,rhs,option_path=solver_option_path)
+    call set(output,surface_nodes,suboutput%val)
+    call deallocate(rhs)
+    call deallocate(suboutput)
+    call deallocate(subpositions)
+
+    call deallocate(mass)
+    call deallocate(surface_mesh)
+
+    deallocate(surface_nodes)
+
+  contains
+  
+    function include_face(face, source, surface_ids)
+      integer, intent(in) :: face
+      type(scalar_field), intent(in) :: source
+      integer, dimension(:), optional, intent(in) :: surface_ids
+      
+      logical :: include_face
+      
+      if(present(surface_ids)) then
+        if(.not. associated(source%mesh%faces)) then
+          include_face = .false.
+        else if(.not. associated(source%mesh%faces%boundary_ids)) then
+          include_face = .false.
+        else
+          include_face = any(surface_ids == surface_element_id(source, face))
+        end if
+      else
+        include_face = .true.
+      end if
+    
+    end function include_face
+    
+  end subroutine surface_weighted_normal
+
+  subroutine weighted_normal_surface_integral_face(s_field, face, positions, integral, face_shape)
+    type(scalar_field), intent(in) :: s_field
+    integer, intent(in) :: face
+    type(vector_field), intent(in) :: positions
+    type(element_type), intent(in) :: face_shape
+
+    real, dimension(mesh_dim(positions),face_shape%loc), intent(out) :: integral
+    
+    integer :: ele, i, j
+    real, dimension(face_ngi(s_field, face)) :: detwei, s_face_quad
+    real, dimension(mesh_dim(s_field), face_ngi(s_field, face)) ::  normal
+
+    ele = face_ele(s_field, face)
+    
+    assert(face_ngi(s_field, face) == face_ngi(positions, face))
+    assert(ele_ngi(s_field, ele) == ele_ngi(positions, ele))
+    assert(mesh_dim(s_field) == positions%dim)
+    
+    call transform_facet_to_physical( &
+         positions, face, detwei_f = detwei, normal = normal)
+   
+    ! Calculate grad s_field at the surface element quadrature points
+    s_face_quad = face_val_at_quad(s_field, face)
+    integral=shape_vector_rhs(face_shape,normal,s_face_quad*detwei)
+    
+  end subroutine weighted_normal_surface_integral_face
   
   function surface_normal_distance_sele(positions, sele, ele) result(h)
     ! calculate wall-normal element size
