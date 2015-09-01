@@ -89,9 +89,8 @@ module detector_data_types
      integer :: type = STATIC_DETECTOR
      !! Identification number indicating the order in which the detectors are read
      integer :: id_number
-     !! ID of the parent list, required for agent stage changes
+     !! ID of the parent list, needed for Zoltan to map the detector back
      integer :: list_id
-
      !! RK timestepping stages (first index is stage no., second index is dim)
      real, dimension(:,:), allocatable :: k
      !! RK update destination vector (size dim)
@@ -258,7 +257,7 @@ module detector_data_types
 
 
      !! Optional array for detector names; names are held in read order
-     character(len=FIELD_NAME_LEN), dimension(:), allocatable :: detector_names
+     character(len = FIELD_NAME_LEN), dimension(:), allocatable :: detector_names
 
      !! List of scalar/vector fields to include in detector output
      type(stringlist), dimension(:), allocatable :: sfield_list
@@ -272,6 +271,8 @@ module detector_data_types
      integer :: output_unit = 0          ! Assumed non-opened as long this is 0
      real :: output_period               ! Output period (simulation time)
      integer :: write_index = 0          ! Current position in output file
+     integer :: mpi_fh = 0               ! MPI filehandle
+     integer :: mpi_write_count = 0      ! Offset in MPI file
      integer :: total_num_det = 0        ! Global number of detectors in this list
   end type detector_linked_list
 
@@ -313,5 +314,6 @@ module detector_data_types
 
     character(len=FIELD_NAME_LEN), dimension(:), allocatable :: pyfields
   end type functional_group
+
 
 end module detector_data_types

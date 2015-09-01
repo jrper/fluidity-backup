@@ -3398,7 +3398,7 @@ contains
      apply_bcs = .true.
 
      path = field%option_path
-     call get_option(path // "/diagnostic/algorithm/source_field_name", field_name)
+     call get_option(path // "/diagnostic/source_field_name", field_name)
      lump_mass=have_option(path // "/diagnostic/lump_mass")
      projected_field => extract_scalar_field(state, trim(field_name))
      positions => extract_vector_field(state, "Coordinate")
@@ -3435,7 +3435,7 @@ contains
        call deallocate(inverse_mass_lumped)
        call deallocate(rhs)
      else if (.not. dg) then
-       call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic/algorithm")
+       call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic")
        call deallocate(mass)
        call deallocate(mass_sparsity)
        call deallocate(rhs)
@@ -3524,7 +3524,7 @@ contains
      apply_bcs = .true.
 
      path = field%option_path
-     call get_option(path // "/diagnostic/algorithm/source_field_name", field_name)
+     call get_option(path // "/diagnostic/source_field_name", field_name)
      lump_mass=have_option(path // "/diagnostic/lump_mass")
      projected_field => extract_vector_field(state, trim(field_name))
      positions => extract_vector_field(state, "Coordinate")
@@ -3561,7 +3561,7 @@ contains
        call deallocate(inverse_mass_lumped)
        call deallocate(rhs)
      else if (.not. dg) then
-       call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic/algorithm")
+       call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic")
        call deallocate(mass)
        call deallocate(mass_sparsity)
        call deallocate(rhs)
@@ -3706,7 +3706,7 @@ contains
      apply_bcs = .true.
 
      path = field%option_path
-     call get_option(path // "/diagnostic/algorithm/source_field_name", field_name)
+     call get_option(path // "/diagnostic/source_field_name", field_name)
      projected_field => extract_tensor_field(state, trim(field_name))
      positions => extract_vector_field(state, "Coordinate")
 
@@ -3730,7 +3730,7 @@ contains
        if (present(solver_path)) then
          call petsc_solve(field, mass, rhs, option_path=trim(solver_path))
        else
-         call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic/algorithm")
+         call petsc_solve(field, mass, rhs, option_path=path // "/diagnostic")
        endif
        call deallocate(mass)
        call deallocate(mass_sparsity)

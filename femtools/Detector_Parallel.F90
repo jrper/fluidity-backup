@@ -44,7 +44,7 @@ module detector_parallel
   use ieee_arithmetic, only: cget_nan
 
   implicit none
-
+  
   private
 
   public :: distribute_detectors, exchange_detectors, detectors_send_all_to_all, &
@@ -612,9 +612,10 @@ contains
                ierr, ndata_per_det, bcast_rounds, round, accept_detector, ind
     integer, dimension(:), allocatable :: ndets_being_bcast
     real, allocatable :: send_buff(:), recv_buff(:)
-    type(element_type), pointer :: shape
+    type(element_type), pointer :: shape  
 
-    ewrite(2,*) "In distribute_detectors"
+    ewrite(2,*) "In distribute_detectors"  
+
 
     ! We allocate a point-to-point sendlist for every processor
     nprocs=getnprocs()
@@ -736,7 +737,7 @@ contains
                 else
                    ! Allocate memory to receive into
                    allocate(recv_buff(ndata_per_det))
-
+             
                    ! Receive broadcast
                    ewrite(2,*) "Receiving detector from process ", i
                    call mpi_bcast(recv_buff,ndata_per_det, getPREAL(), i-1, MPI_COMM_FEMTOOLS, ierr)
@@ -801,6 +802,7 @@ contains
 
     ewrite(2,*) "In exchange_detectors"
 
+    ! We want a sendlist for every processor
     nprocs=getnprocs()
     assert(size(send_lists)==nprocs)
     allocate(recv_lists(nprocs))
@@ -997,93 +999,5 @@ contains
     end if
 
   end subroutine sync_detector_coordinates
-
-  subroutine search_for_detectors(detectors, positions)
-    !!< This subroutine establishes on which processor, in which element and at
-    !!< which local coordinates each detector is to be found. A negative element
-    !!< value indicates that no element could be found for that node.
-    !!< Detectors are assumed to be local.
-    
-    type(vector_field), intent(inout) :: positions
-    
-    type(detector_linked_list), intent(inout) :: detectors
-    type(detector_type), pointer :: node
-
-    integer :: i, nglobal_dets
-    real, dimension(:, :), allocatable :: local_coords, local_l_coords
-    real, dimension(:, :), allocatable :: global_coords, global_l_coords
-    integer, dimension(:), allocatable :: local_ele, global_ele
-       
-    call initialise_picker(positions)
-    assert(ele_numbering_family(positions, 1) == FAMILY_SIMPLEX)
-
-    allocate(local_coords(positions%dim, detectors%length))
-    allocate(local_l_coords(positions%dim+1, detectors%length))
-    allocate(local_ele(detectors%length))
-        
-    node => detectors%first
-    do i = 1, detectors%length
-      local_coords(:, i) = node%position
-      node => node%next
-    end do
-
-    ! First check locally
-    if (detectors%length > 0) then
-       call picker_inquire(positions, local_coords(:,:), local_ele(:), local_coords = local_l_coords(:,:), global = .false.)
-    end if
-
-    nglobal_dets = 0
-    node => detectors%first
-    do i = 1, detectors%length
-      node%local_coords = local_l_coords(:, i)
-      node%element = local_ele(i)
-      if (node%element < 0) then
-         nglobal_dets = nglobal_dets + 1
-      end if
-      node => node%next
-    end do
-
-    deallocate(local_coords)
-    deallocate(local_l_coords)
-    deallocate(local_ele)
-
-    call allmax(nglobal_dets)
-    if (nglobal_dets==0) then
-       return
-    end if
-
-    ! If any detectors could not be found locally try again globally
-    allocate(global_coords(positions%dim, nglobal_dets))
-    allocate(global_l_coords(positions%dim+1, nglobal_dets))
-    allocate(global_ele(nglobal_dets))
-
-    nglobal_dets = 0
-    node => detectors%first
-    do i = 1, detectors%length
-      if (node%element < 0) then
-         nglobal_dets = nglobal_dets + 1
-         global_coords(:, nglobal_dets) = node%position
-      end if
-      node => node%next
-    end do
-
-    call picker_inquire(positions, global_coords(:,:), global_ele(:), local_coords = global_l_coords(:,:), global = .true.)
-
-    nglobal_dets = 0
-    node => detectors%first
-    do i = 1, detectors%length
-      if (node%element < 0) then
-         nglobal_dets = nglobal_dets + 1
-         node%local_coords = global_l_coords(:, nglobal_dets)
-         node%element = global_ele(nglobal_dets)
-      end if
-      node => node%next
-    end do
-
-    deallocate(global_coords)
-    deallocate(global_l_coords)
-    deallocate(global_ele)
-    
-  end subroutine search_for_detectors
 
 end module detector_parallel
