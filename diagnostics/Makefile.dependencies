@@ -144,3 +144,13 @@ Tidal_Diagnostics.o ../include/tidal_diagnostics.mod: Tidal_Diagnostics.F90 \
    ../include/state_module.mod ../include/tidal_module.mod \
    ../include/write_state_module.mod
 
+../include/wear_diagnostics.mod: Wear.o
+	@true
+
+Wear.o ../include/wear_diagnostics.mod: Wear.F90 \
+   ../include/diagnostic_source_fields.mod ../include/fdebug.h \
+   ../include/field_options.mod ../include/fields.mod ../include/fldebug.mod \
+   ../include/global_parameters.mod ../include/spud.mod \
+   ../include/state_module.mod ../include/surface_diagnostics.mod \
+   ../include/surface_integrals.mod
+
