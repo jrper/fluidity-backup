@@ -95,6 +95,10 @@ contains
       logical,allocatable,dimension(:),save:: initeddy
       character(len=OPTION_PATH_LEN)       :: bc_path_i
 
+
+      real, dimension(1), target :: zero = [0.0]
+      real, dimension(2), target :: inf_array = [-huge(1.0),huge(1.0)]
+
 #ifdef HAVE_MPI
       INCLUDE 'mpif.h'
       INTEGER IERR
@@ -124,9 +128,17 @@ contains
       call get_option(trim(bc_path_i),nots)
 
       ! calculate min&max turbulence lengthscale
-      lx => surface_field3%val(1,:)  
-      ly => surface_field3%val(2,:)
-      lz => surface_field3%val(3,:)
+      lx => surface_field3%val(1,:)
+      if (surface_field3%dim>1) then
+         ly => surface_field3%val(2,:)
+      else
+         ly => inf_array
+      end if
+      if (surface_field3%dim>2) then
+         lz => surface_field3%val(3,:)
+      else
+         lz => inf_array
+      end if
 
       lxmin = minval(lx); lxmax = maxval(lx)
       lymin = minval(ly); lymax = maxval(ly)
@@ -143,9 +155,17 @@ contains
       bcnod=surface_field%mesh%nodes
 
       ! coordinates of nodes
-      x => bc_position%val(1,:)  
-      y => bc_position%val(2,:)
-      z => bc_position%val(3,:)
+      x => bc_position%val(1,:)
+      if (surface_field3%dim>1) then
+         y =>  bc_position%val(2,:)
+      else
+         y => inf_array
+      end if
+      if (surface_field3%dim>2) then
+         z =>  bc_position%val(3,:)
+      else
+         z => inf_array
+      end if
 
       ! work out min & max of boundary surface and orientation
       xmin = minval(x); xmax = maxval(x)
@@ -417,14 +437,31 @@ contains
 
          uf=0.; vf=0.; wf=0.
          rts_x=node_val(surface_field3,1,i)
-         rts_y=node_val(surface_field3,2,i)
-         rts_z=node_val(surface_field3,3,i)
+         if (surface_field3%dim>1) then
+            rts_y=node_val(surface_field3,2,i)
+         else
+            rts_y=2.0/3.0
+         end if
+         if (surface_field3%dim>2) then
+            rts_z=node_val(surface_field3,3,i)
+         else
+            rts_z=2.0/3.0
+         end if
+
 
          do j=1,nots
 
             dx=abs(x(i)-eddies(ns)%xeddy(j))
-            dy=abs(y(i)-eddies(ns)%yeddy(j))
-            dz=abs(z(i)-eddies(ns)%zeddy(j))
+            if (surface_field3%dim>1) then
+               dy=abs(y(i)-eddies(ns)%yeddy(j))
+            else
+               dy=0.0
+            endif
+            if (surface_field3%dim>2) then
+               dz=abs(z(i)-eddies(ns)%zeddy(j))
+            else
+               dz=0.0
+            end if
 
             if (dx<rts_x .and. dy<rts_y .and. dz<rts_z) then
 
@@ -444,8 +481,16 @@ contains
 
          ! Cholesky decomposition of the Re_ij
          resuu=node_val(surface_field2,1,i)
-         resvv=node_val(surface_field2,2,i)
-         resww=node_val(surface_field2,3,i)
+         if (surface_field2%dim>1) then
+            resvv=node_val(surface_field2,2,i)
+         else
+            resvv=1.0e-5
+         end if
+         if (surface_field2%dim>2) then
+            resww=node_val(surface_field2,3,i)
+         else
+            resww=1.0e-5
+         end if
 
          if (resuu<0.)then
             ewrite(3,*) 'WARNING: there is a negative value in Re_uu'
@@ -474,8 +519,16 @@ contains
 
       ! get min&max of mean velocities
       minum=minval(surface_field1%val(1,:)); maxum=maxval(surface_field1%val(1,:))
-      minvm=minval(surface_field1%val(2,:)); maxvm=maxval(surface_field1%val(2,:))
-      minwm=minval(surface_field1%val(3,:)); maxwm=maxval(surface_field1%val(3,:))
+      if (surface_field1%dim>1) then
+         minvm=minval(surface_field1%val(2,:)); maxvm=maxval(surface_field1%val(2,:))
+      else
+         minvm=0.0; maxvm=0.0
+      end if
+      if (surface_field1%dim>2) then
+         minwm=minval(surface_field1%val(3,:)); maxwm=maxval(surface_field1%val(3,:))
+      else
+         minwm=0.0; maxwm=0.0
+      end if 
 
       call allmin(minum); call allmax(maxum)
       call allmin(minvm); call allmax(maxvm)
@@ -486,7 +539,7 @@ contains
          vl(1) = node_val(surface_field1,1,i)+ufl(i)
          vl(2) = node_val(surface_field1,2,i)+vfl(i)
          vl(3) = node_val(surface_field1,3,i)+wfl(i)
-         call set(surface_field,i,vl)
+         call set(surface_field,i,vl(1:surface_field%dim))
       end do
 
       ! calculate min&max of Re_ij
