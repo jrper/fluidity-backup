@@ -46,6 +46,7 @@ module interpolation_manager
   use vtk_interfaces
   use geostrophic_pressure
   use pseudo_consistent_interpolation
+  use merge_points
   
   implicit none
   
@@ -975,13 +976,15 @@ contains
     type(mesh_type), intent(in):: mesh_in
     type(vector_field), intent(out):: expanded_positions
     type(mesh_type), intent(out):: expanded_mesh
+
+    type(merge_points_filter) :: filter
     
     type(vector_field) :: positions
     type(mesh_type) :: mesh, expanded_x_mesh
     character(len=OPTION_PATH_LEN) :: periodic_mapping_python, inverse_periodic_mapping_python
     real, dimension(:, :), allocatable :: forward_mapped_nodes, inverse_mapped_nodes
     integer :: multiple, j, bc, no_bcs, ele, node, total_multiple
-    integer :: dim
+    integer :: dim, id
     
     dim = positions_in%dim
     
@@ -1055,7 +1058,23 @@ contains
       call deallocate(positions)
       positions = expanded_positions
       mesh = expanded_mesh
+   end do
+
+
+   !!! Fix up the connectivity so that Galerkin projection still works.
+    call allocate(filter,positions_in%val)
+    do node=node_count(positions_in)+1, node_count(positions)
+
+       id = get_filter_id(filter,node_val(positions, node))
+       if (id > -1) then 
+          ewrite(3,*), "Fixing duplicate periodic node in expanded mesh"
+          ewrite(3,*), node, id, node_val(positions, node)
+          where (positions%mesh%ndglno==node)
+             positions%mesh%ndglno=id
+          end where
+       end if
     end do
+    call deallocate(filter)
 
   end subroutine expand_periodic_mesh
 
