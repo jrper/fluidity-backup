@@ -102,6 +102,7 @@ module fluids_module
   use multiphase_module
   use detector_parallel, only: sync_detector_coordinates, deallocate_detector_list_array
   use tictoc
+  use stochastic
   use momentum_diagnostic_fields, only: calculate_densities
   use sediment_diagnostics, only: calculate_sediment_flux
 
@@ -195,6 +196,8 @@ contains
 
     call initialise_qmesh
     call initialise_write_state
+
+    call initialise_stochastic_module()
 
     ! Initialise Hyperlight
 #ifdef HAVE_HYPERLIGHT
@@ -414,7 +417,10 @@ contains
     end if
     
     ! Checkpoint at start
-    if(do_checkpoint_simulation(dump_no)) call checkpoint_simulation(state, cp_no = dump_no)
+    if(do_checkpoint_simulation(dump_no)) then
+       if (have_sem_bcs()) call checkpoint_synthetic_eddies(dump_no)
+       call checkpoint_simulation(state, cp_no = dump_no)
+    end if
     ! Dump at start
     if( &
          ! if this is not a zero timestep simulation (otherwise, there would
@@ -476,6 +482,7 @@ contains
 
           ! Intermediate dumps
           if(do_checkpoint_simulation(dump_no)) then
+             if (have_sem_bcs()) call checkpoint_synthetic_eddies(dump_no)
              call checkpoint_simulation(state, cp_no = dump_no)
           end if
           call write_state(dump_no, state)
@@ -924,6 +931,7 @@ contains
 
     ! Checkpoint at end, if enabled
     if(have_option("/io/checkpointing/checkpoint_at_end")) then
+       if (have_sem_bcs()) call checkpoint_synthetic_eddies(dump_no)
        call checkpoint_simulation(state, cp_no = dump_no)
     end if
     ! Dump at end, unless explicitly disabled
@@ -970,6 +978,8 @@ contains
     ! deallocate the pointer to the array of states and sub-state:
     deallocate(state)
     if(use_sub_state()) deallocate(sub_state)
+
+    call finalise_stochastic_module
 
     ! Clean up registered diagnostics
     call destroy_registered_diagnostics 

@@ -36,21 +36,21 @@ use global_parameters, only: dt, option_path_len
 use fields
 use elements
 use parallel_tools
+use stochastic
+
+use vtpfortran
 implicit none
 
 private
-public synthetic_eddy_method, add_sem_bc, initialise_sem_memory
+public synthetic_eddy_method, add_sem_bc, initialise_sem_memory, checkpoint_synthetic_eddies, have_sem_bcs
 
   
 type eddy
-   !!< Store eddy info, for synthetic eddy method
-   real, dimension(:),pointer:: xeddy
-   real, dimension(:),pointer:: yeddy
-   real, dimension(:),pointer:: zeddy
-
-   integer, dimension(:),pointer:: eu
-   integer, dimension(:),pointer:: ev
-   integer, dimension(:),pointer:: ew
+!!< Store eddy info, for synthetic eddy method
+   integer, dimension(:), pointer   :: plane
+   real, dimension(:,:),    pointer :: eddy_plane_positions
+   real, dimension(:),    pointer :: eddy_depth
+   integer, dimension(:,:), pointer :: eddy_polarities
 end type eddy
 
 
@@ -59,46 +59,56 @@ type(eddy),dimension(:),pointer,save:: eddies
 
 contains
 
-  subroutine synthetic_eddy_method(surface_field, surface_field1,  & 
-       surface_field2, surface_field3, bc_position, bc_path_i, ns)
+  function have_sem_bcs()
+    logical have_sem_bcs
 
+    have_sem_bcs = sem_bc_count > 0
+  end function have_sem_bcs
+
+  subroutine initialise_eddies()
+
+  end subroutine initialise_eddies
+
+  subroutine synthetic_eddy_method(eddy_inlet_velocity, mean_velocity,  & 
+       reynolds_stresses, turbulence_lengthscales, bc_position, bc_path_i, ns)
+    
       ! declarations
-      type(vector_field),intent(inout)     :: surface_field
-      type(vector_field),intent(in)        :: surface_field1,surface_field2
-      type(vector_field),intent(in)        :: surface_field3
+      type(vector_field),intent(inout)     :: eddy_inlet_velocity
+      type(vector_field),intent(in)        :: mean_velocity, reynolds_stresses
+      type(vector_field),intent(in)        :: turbulence_lengthscales
       type(vector_field),intent(in)        :: bc_position
+      character(len=*),  intent(in)        :: bc_path_i
+      integer, intent(in)                  :: ns
+
       type(element_type),pointer           :: x_shape,vel_shape
-      real,allocatable,dimension(:)        :: detwei,vel_int
-      real,allocatable,dimension(:,:),save :: uav
-      real,allocatable,dimension(:),save   :: area
-      real                                 :: xmin,xmax,ymin,ymax,zmin,zmax,tarea
-      real                                 :: lxmin,lxmax,lymin,lymax,lzmin,lzmax
-      real                                 :: xminb,xmaxb,yminb,ymaxb,zminb,zmaxb
-      real                                 :: dxb,dyb,dzb
-      real                                 :: rdmax,rts_x,rts_y,rts_z
-      real                                 :: dx,dy,dz,vol
-      real                                 :: dxp,dyp,dzp
-      integer                              :: nsem,ns,nots,bcnod,i,j,ele,ratio
-      real,allocatable,dimension(:,:)      :: cords
-      real,dimension(2)                    :: tmpcord
-      real,dimension(:),pointer            :: x,y,z
-      real,dimension(:),pointer            :: lx,ly,lz
-      real                                 :: uf,vf,wf,ff
-      real,allocatable,dimension(:)        :: ufl,vfl,wfl
-      real                                 :: a11,a21,a22,a31,a32,a33
-      real                                 :: resuu,resvv,resww
-      real,dimension(3)                    :: vl
-      real                                 :: minum,minvm,minwm,maxum,maxvm,maxwm
-      real                                 :: reuumn,reuumx,revvmn,revvmx,rewwmn,rewwmx
-      real                                 :: uflmn,uflmx,vflmn,vflmx,wflmn,wflmx
+
+      real, dimension(ele_ngi(bc_position,1)) :: detwei
+      real, dimension(ele_loc(mean_velocity,1)) :: vel_int
+      real,allocatable,dimension(:,:),save :: averaged_velocity
+      real,allocatable,dimension(:),save   :: area       
+
+      real, dimension(mean_velocity%dim) :: xmin, xmax, lxmin, lxmax, &
+           xminb, xmaxb, dxb, rts, dx, dxp
+      real                                   :: rdmax, volume, total_area
+      
+      integer :: number_of_eddies, i, j, ele, ratio, dim
+      integer, dimension(1)                :: idxp
+      real,allocatable,dimension(:,:)      :: coords
+      real,dimension(:,:), allocatable:: tmpcord
+      integer,dimension(:,:), allocatable:: tmp_polarity
+      logical,dimension(:), allocatable:: regenerate_eddy
+
+      type(vector_field)                   :: ufl
+
+      integer :: plane(mean_velocity%dim-1), depth
+
+      real,dimension(mean_velocity%dim):: uf, res, re_ii_min, re_ii_max,&
+           uflmin, uflmax, min_mean_velocity, max_mean_velocity, ff, pos
+      
+      real,dimension(mean_velocity%dim*(mean_velocity%dim+1)/2):: a
+
       logical,save                         :: initz=.false.
       logical,allocatable,dimension(:),save:: initeddy
-      character(len=OPTION_PATH_LEN)       :: bc_path_i
-
-#ifdef HAVE_MPI
-      INCLUDE 'mpif.h'
-      INTEGER IERR
-#endif
 
       ! time varying turbulent inlet conditions
       ! input:: mean flow, Reynolds stress tensor, turbulence length-scale
@@ -106,460 +116,335 @@ contains
       ! can be used to generate turbulent inlet bcs for any given surface
       ! aligned with the cartesian coordinate system
 
-      ! known issues::
-      ! 1.there is a bug when calculating the inflow plane surface area in parallel-tarea
-      ! 2.there is a bug when calculating the inflow bulk velocity in parallel-uav
-      ! both because of the halo
 
       ! field names::
-      ! surface_field  - inlet boundary condition (calculated here)
-      ! surface_field1 - mean velocity
-      ! surface_field2 - Re_ij (uu,vv,ww)
-      ! surface_field3 - turbulence length scale
+      ! eddy_inlet_velocity  - inlet boundary condition (calculated here)
+      ! mean_velocity - mean velocity
+      ! reynolds_stresses - Re_ij (uu,vv,ww)
+      ! turbulence_lengthscales - turbulence length scale
       ! bc_position    - inlet plane mesh
 
       ewrite(3,*) 'setting a turbulent inlet boundary condition',ns
-      nsem = sem_bc_count
+      dim=mean_velocity%dim
       ! get additional turbulence related options
-      call get_option(trim(bc_path_i),nots)
+      call get_option(trim(bc_path_i),number_of_eddies)
 
-      ! calculate min&max turbulence lengthscale
-      lx => surface_field3%val(1,:)  
-      ly => surface_field3%val(2,:)
-      lz => surface_field3%val(3,:)
+      lxmin = minval(turbulence_lengthscales%val,dim=2)
+      lxmax = maxval(turbulence_lengthscales%val,dim=2)
 
-      lxmin = minval(lx); lxmax = maxval(lx)
-      lymin = minval(ly); lymax = maxval(ly)
-      lzmin = minval(lz); lzmax = maxval(lz)
+      do i=1,dim
+         call allmin(lxmin(i))
+         call allmax(lxmax(i))
+      end do
 
-      call allmin(lxmin); call allmax(lxmax)
-      call allmin(lymin); call allmax(lymax)
-      call allmin(lzmin); call allmax(lzmax)
+      ewrite(3,*) 'number of eddies',number_of_eddies
+      ewrite(3,*) 'turbulence lengthscale min&max',lxmin,':',lxmax
 
-      ewrite(3,*) 'number of eddies',nots
-      ewrite(3,*) 'turbulence lengthscale min&max',lxmin,lxmax,':',lymin,lymax,':',lzmin,lzmax
+      ! work out min & max of boundary surface and calculate orientation
+      xmin = minval(bc_position%val,dim=2)
+      xmax = maxval(bc_position%val,dim=2)
 
-      ! number of nodes on boundary surface
-      bcnod=surface_field%mesh%nodes
+      do i=1,dim
+         call allmin(xmin(i))
+         call allmax(xmax(i))
+      end do
 
-      ! coordinates of nodes
-      x => bc_position%val(1,:)  
-      y => bc_position%val(2,:)
-      z => bc_position%val(3,:)
+      dxp= xmax-xmin
 
-      ! work out min & max of boundary surface and orientation
-      xmin = minval(x); xmax = maxval(x)
-      ymin = minval(y); ymax = maxval(y)
-      zmin = minval(z); zmax = maxval(z)
-
-      call allmin(xmin)
-      call allmin(ymin)
-      call allmin(zmin)
-
-      call allmax(xmax)
-      call allmax(ymax)
-      call allmax(zmax)
-
-      dxp = xmax-xmin
-      dyp = ymax-ymin
-      dzp = zmax-zmin
-
-      ! generate bounding box
-      if (dxp<dyp .and. dxp<dzp) then
+      ! orient box of eddies to feed into domain along shortext axis.
+      ! This assumes domain is oriented with coordinate system.
+      idxp = minloc(dxp)
+      select case(idxp(1))
+      case(1)
          ewrite(3,*) 'using a yz plane'
 
-         xminb=-lxmax+xmax
-         xmaxb= lxmax+xmax
-         yminb= ymin-lymax
-         ymaxb= ymax+lymax
-         zminb= zmin-lzmax
-         zmaxb= zmax+lzmax
+         xminb(1)=-lxmax(1)+xmax(1)
+         xmaxb(1)= lxmax(1)+xmax(1)
 
-         rdmax=lxmax
+         xminb(2:)=xmin(2:) - lxmax(2:)
+         xmaxb(2:)=xmax(2:) + lxmax(2:)
 
-      elseif (dyp<dxp .and. dyp<dzp) then
-         ewrite(3,*) 'using a xz plane'
+         rdmax=lxmax(1)
 
-         xminb= xmin-lxmax
-         xmaxb= xmax+lxmax
-         yminb=-lymax+ymax
-         ymaxb= lymax+ymax
-         zminb= zmin-lzmax
-         zmaxb= zmax+lzmax
+         depth=1
+         plane=[(i,i=2,dim)]
+       
+      case(2)
+         ewrite(3,*) 'using an xz plane'
 
-         rdmax=lymax
+         xminb(1)=xmin(1) - lxmax(1)
+         xmaxb(1)=xmax(1) + lxmax(1)
 
-      elseif (dzp<dxp .and. dzp<dyp) then
-         ewrite(3,*) 'using a xy plane'
+         xminb(2)=-lxmax(2)+xmax(2)
+         xmaxb(2)= lxmax(2)+xmax(2)
 
-         xminb= xmin-lxmax
-         xmaxb= xmax+lxmax
-         yminb= ymin-lymax
-         ymaxb= ymax+lymax
-         zminb=-lzmax+zmax
-         zmaxb= lzmax+zmax
+         xminb(3:)=xmin(3:) - lxmax(3:)
+         xmaxb(3:)=xmax(3:) + lxmax(3:)
 
-         rdmax=lzmax
-      end if
+         rdmax=lxmax(2)
 
-      dxb= xmaxb-xminb
-      dyb= ymaxb-yminb
-      dzb= zmaxb-zminb
+         depth=2
+         plane(1)=1
+         plane(3:)=[(i,i=3,dim)]
+
+      case(3)
+         ewrite(3,*) 'using an xy plane'
+
+         xminb(1:2)=xmin(1:2) - lxmax(1:2)
+         xmaxb(1:2)=xmax(1:2) + lxmax(1:2)
+
+         xminb(3)=-lxmax(3)+xmax(3)
+         xmaxb(3)= lxmax(3)+xmax(3)
+
+         rdmax=lxmax(3)
+
+         depth=3
+         plane(1:2)=[1,2]
+      end select
+
+      eddies(ns)%plane(1:dim-1)=plane
+      eddies(ns)%plane(dim)=depth
+
+      dxb = xmaxb - xminb
 
       ! generate initial coordinades, signs of turbulent spots
       ! calculate convection velocity
       if (.not.initz) then
-         allocate(initeddy(nsem))
+         if (have_option('/embeded_models/synthetic_eddies/read_from_file')) then
+            call read_eddies_from_checkpoint()
+         end if
+         allocate(initeddy(sem_bc_count))
          initeddy = .true.
-
-         allocate(uav(nsem,3))
-         allocate(area(nsem))
-         uav=0.; area=0.
-
+         allocate(averaged_velocity(dim, sem_bc_count))
+         allocate(area(sem_bc_count))
+         averaged_velocity=0.; area=0.
          initz=.true.
       endif
 
-      if(initeddy(ns))then
-         if(GetRank()==0) then
-            allocate(cords(nots,3))
-            call random_seed()
-            call random_number(cords)
-            
-            do i=1,nots
-               eddies(ns)%xeddy(i)=xminb+(xmaxb-xminb)*cords(i,1)
-               eddies(ns)%yeddy(i)=yminb+(ymaxb-yminb)*cords(i,2)
-               eddies(ns)%zeddy(i)=zminb+(zmaxb-zminb)*cords(i,3)
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-            enddo
-            deallocate(cords)
-         end if
-
-#ifdef HAVE_MPI
-         if(IsParallel())then
-            call mpi_bcast(eddies(ns)%xeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-            call mpi_bcast(eddies(ns)%yeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-            call mpi_bcast(eddies(ns)%zeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-
-            call mpi_bcast(eddies(ns)%eu(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)
-            call mpi_bcast(eddies(ns)%ev(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)
-            call mpi_bcast(eddies(ns)%ew(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)
-         endif
-#endif
-
+      if(initeddy(ns)) then
          x_shape   => ele_shape(bc_position,1)
-         vel_shape => ele_shape(surface_field1,1)
-
-         allocate(detwei(1:ele_ngi(bc_position,1)))
-         allocate(vel_int(1:ele_loc(surface_field1,1)))
-
-         tarea=0.
-         do ele=1,element_count(surface_field1)
+         vel_shape => ele_shape(mean_velocity,1)
+         
+         total_area=0.
+         do ele=1,element_count(mean_velocity)
+            if (.not. element_owned(bc_position,ele) ) cycle
             call transform_to_physical(bc_position,ele,detwei=detwei)
             vel_int=shape_rhs(vel_shape, detwei)
-            tarea=tarea+sum(vel_int)
-            do i=1,surface_field1%dim
-               uav(ns,i)=uav(ns,i)+sum(ele_val(surface_field1,i,ele)*vel_int)
-            enddo
+            total_area=total_area+sum(vel_int)
+            averaged_velocity(:,ns)=averaged_velocity(:,ns)+matmul(ele_val(mean_velocity,ele),vel_int)
          enddo
+         call allsum(total_area)
+         call allsum(averaged_velocity(:,ns))
+         averaged_velocity(:,ns)=averaged_velocity(:,ns)/total_area
 
-         deallocate(detwei,vel_int)
+         area(ns)=total_area
 
-         call allsum(tarea)
-         call allsum(uav(ns,:))
+         if (.not. have_option('/embedded_models/synthetic_eddies/read_from_file')) then
+      
+            allocate(coords(dim,number_of_eddies))
 
-         do i=1,surface_field1%dim
-            uav(ns,i)=uav(ns,i)/tarea
-         enddo
+            !!! parallel broadcasts occur in these calls 
+            call get_random_on_root(coords,UNIFORM,"SyntheticEddyMethod")
+            eddies(ns)%eddy_polarities=esign(dim,number_of_eddies)
+            
+            !place each eddy randomly inside its box
+            
+            do i=1,number_of_eddies
+               eddies(ns)%eddy_plane_positions(:,i)=xminb(plane)+(xmaxb(plane)-xminb(plane))*coords(1:dim-1,i)
+            end do
+            eddies(ns)%eddy_depth=xminb(depth)+(xmaxb(depth)-xminb(depth))*coords(dim,:)
+            deallocate(coords)   
+         end if
 
-         area(ns)=tarea
          initeddy(ns)=.false.
       endif
       
       ewrite(3,*) 'surface info'
       ewrite(3,*) 'x min&max',xmin,xmax,dxp
-      ewrite(3,*) 'y min&max',ymin,ymax,dyp
-      ewrite(3,*) 'z min&max',zmin,zmax,dzp
       ewrite(3,*) 'surface area',area(ns)
-      ewrite(3,*) 'number of nodes',bcnod
-      ewrite(3,*) 'convection velocity:',uav(ns,1),uav(ns,2),uav(ns,3)
+      ewrite(3,*) 'convection velocity:',averaged_velocity(:,ns)
 
       ! bounding box volume
-      vol=area(ns)*2*rdmax
+      volume=area(ns)*2*rdmax
 
       ewrite(3,*) 'bounding box info'
-      ewrite(3,*) 'x min&max',xminb,xmaxb
-      ewrite(3,*) 'y min&max',yminb,ymaxb
-      ewrite(3,*) 'z min&max',zminb,zmaxb
-      ewrite(3,*) 'box volume',vol
-
-      if(GetRank()==0) then
-         ! convect turbulent spots
-         do i=1,nots
-            eddies(ns)%xeddy(i)=eddies(ns)%xeddy(i)+uav(ns,1)*dt
-            eddies(ns)%yeddy(i)=eddies(ns)%yeddy(i)+uav(ns,2)*dt
-            eddies(ns)%zeddy(i)=eddies(ns)%zeddy(i)+uav(ns,3)*dt
-         enddo
-
-         ! regenerate
-         do i=1,nots
-
-            if(eddies(ns)%xeddy(i)>xmaxb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%xeddy(i)-xminb))/dxb)
-
-               eddies(ns)%xeddy(i)=eddies(ns)%xeddy(i)-ratio*dxb
-               eddies(ns)%yeddy(i)=yminb+(ymaxb-yminb)*tmpcord(1)
-               eddies(ns)%zeddy(i)=zminb+(zmaxb-zminb)*tmpcord(2)
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-
-            elseif(eddies(ns)%xeddy(i)<xminb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%xeddy(i)-xmaxb))/dxb)
-
-               eddies(ns)%xeddy(i)=eddies(ns)%xeddy(i)+ratio*dxb
-               eddies(ns)%yeddy(i)=yminb+(ymaxb-yminb)*tmpcord(1)
-               eddies(ns)%zeddy(i)=zminb+(zmaxb-zminb)*tmpcord(2)
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-
-            elseif(eddies(ns)%yeddy(i)>ymaxb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%yeddy(i)-yminb))/dyb)
-
-               eddies(ns)%xeddy(i)=xminb+(xmaxb-xminb)*tmpcord(1)
-               eddies(ns)%yeddy(i)=eddies(ns)%yeddy(i)-ratio*dyb
-               eddies(ns)%zeddy(i)=zminb+(xmaxb-xminb)*tmpcord(2)
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-
-            elseif(eddies(ns)%yeddy(i)<yminb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%yeddy(i)-ymaxb))/dyb)
-
-               eddies(ns)%xeddy(i)=xmaxb+(xmaxb-xminb)*tmpcord(1)
-               eddies(ns)%yeddy(i)=eddies(ns)%yeddy(i)+ratio*dyb
-               eddies(ns)%zeddy(i)=zminb+(zmaxb-zminb)*tmpcord(2)
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-
-            elseif(eddies(ns)%zeddy(i)>zmaxb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%zeddy(i)-zminb))/dzb)
-
-               eddies(ns)%xeddy(i)=xminb+(xmaxb-xminb)*tmpcord(1)
-               eddies(ns)%yeddy(i)=yminb+(ymaxb-yminb)*tmpcord(2)
-               eddies(ns)%zeddy(i)=eddies(ns)%zeddy(i)-ratio*dzb
-
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-
-            elseif(eddies(ns)%zeddy(i)<zminb)then
-               call random_number(tmpcord)
-
-               ratio= int((abs(eddies(ns)%zeddy(i)-zmaxb))/dzb)
-
-               eddies(ns)%xeddy(i)=xmaxb+(xmaxb-xminb)*tmpcord(1)
-               eddies(ns)%yeddy(i)=yminb+(ymaxb-yminb)*tmpcord(2)
-               eddies(ns)%zeddy(i)=eddies(ns)%zeddy(i)+ratio*dzb
-               
-               eddies(ns)%eu(i)=esign()
-               eddies(ns)%ev(i)=esign()
-               eddies(ns)%ew(i)=esign()
-            endif
-         enddo
-      end if
-
-#ifdef HAVE_MPI
-      if(IsParallel())then
-         call mpi_bcast(eddies(ns)%xeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-         call mpi_bcast(eddies(ns)%yeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-         call mpi_bcast(eddies(ns)%zeddy(1:nots),nots,GetPREAL(),0,MPI_COMM_FEMTOOLS,ierr)
-
-         call mpi_bcast(eddies(ns)%eu(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)
-         call mpi_bcast(eddies(ns)%ev(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)
-         call mpi_bcast(eddies(ns)%ew(1:nots),nots,mpi_integer,0,MPI_COMM_FEMTOOLS,ierr)        
-      endif
-#endif 
-
-      !ewrite(3,*) 'eddy coordinates & signs'
-      !do i=1,nots
-      !   ewrite(3,*) i,                                                    &
-      !        eddies(ns)%xeddy(i),eddies(ns)%yeddy(i),eddies(ns)%zeddy(i), & 
-      !        eddies(ns)%eu(i),eddies(ns)%ev(i),eddies(ns)%ew(i)
-      !enddo
+      do i=1,dim
+         ewrite(3,*) 'i min&max',i, xminb(i),xmaxb(i)
+      end do
+      ewrite(3,*) 'box volume',volume
       
-      ! calculate fluctuating component
-      allocate(ufl(bcnod))
-      allocate(vfl(bcnod))
-      allocate(wfl(bcnod))
 
-      ufl=0.; vfl=0.; wfl=0.
 
-      do i=1,bcnod
+      ! convect turbulent spots by the representative averaged velocity
 
-         uf=0.; vf=0.; wf=0.
-         rts_x=node_val(surface_field3,1,i)
-         rts_y=node_val(surface_field3,2,i)
-         rts_z=node_val(surface_field3,3,i)
+      eddies(ns)%eddy_depth=eddies(ns)%eddy_depth+averaged_velocity(depth,ns)*dt
 
-         do j=1,nots
+      ! regenerate positions of eddies which have left the box
 
-            dx=abs(x(i)-eddies(ns)%xeddy(j))
-            dy=abs(y(i)-eddies(ns)%yeddy(j))
-            dz=abs(z(i)-eddies(ns)%zeddy(j))
+      allocate(regenerate_eddy(size(eddies(ns)%eddy_depth)))
+      regenerate_eddy=eddies(ns)%eddy_depth>xmaxb(depth) .or. eddies(ns)%eddy_depth(i)<xminb(depth)
+      allocate(tmpcord(dim-1,count(regenerate_eddy)),tmp_polarity(dim,count(regenerate_eddy)))
+      call get_random_on_root(tmpcord,UNIFORM,"SyntheticEddyMethod")
+      tmp_polarity=esign(dim,count(regenerate_eddy))
 
-            if (dx<rts_x .and. dy<rts_y .and. dz<rts_z) then
+      j=1
 
-               ff=(1.-dx/rts_x)*(1.-dy/rts_y)*(1.-dz/rts_z)
-               ff=ff/((sqrt(3./2.*rts_x))*(sqrt(3./2.*rts_y))*(sqrt(3./2.*rts_z)))
+      do i=1,number_of_eddies
+         if (.not. regenerate_eddy(i)) cycle 
+         eddies(ns)%eddy_plane_positions(:,i)=xminb(plane)+(xmaxb(plane)-xminb(plane))*tmpcord(:,j)
+         eddies(ns)%eddy_polarities(:,i)=tmp_polarity(:,j)
+         eddies(ns)%eddy_depth(i)=xminb(depth)+mod(eddies(ns)%eddy_depth(i)-xminb(depth),dxb(depth))
+         j=j+1
+      end do
 
-               uf=uf+eddies(ns)%eu(j)*ff
-               vf=vf+eddies(ns)%ev(j)*ff
-               wf=wf+eddies(ns)%ew(j)*ff
+      ! calculate fluctuating eddy components on inlet velocity
+      
+      call allocate(ufl,eddy_inlet_velocity%dim,eddy_inlet_velocity%mesh,"FluctuatingVelocities")
+      call zero(ufl)
 
-            end if
+      do i=1,node_count(ufl)
+
+         uf=0.0
+         rts=node_val(turbulence_lengthscales,i)
+
+         do j=1,number_of_eddies
+            pos=node_val(bc_position,i)
+            dx(plane)=abs(pos(plane)-eddies(ns)%eddy_plane_positions(:,j))
+            dx(depth)=abs(pos(depth)-eddies(ns)%eddy_depth(j))
+
+            if (all(dx<rts)) then
+
+               ff=product(1.-dx/rts)/product(sqrt(3./2.*rts))
+
+               uf=uf+eddies(ns)%eddy_polarities(:,j)*ff
+             end if
+          end do
+
+          uf=uf*sqrt(volume/number_of_eddies)
+
+          res=node_val(reynolds_stresses,i)
+
+          if (any(res<0.)) then
+             ewrite(3,*) 'WARNING: there is a negative value in Reynolds stress matrix'
+          end if
+
+          where(res<0.)
+             res =1.e-5
+          end where
+
+
+          ! A Cholesky decomposition of a Reynolds stress matrix assumed to
+          ! be diagonal.
+
+          ! The full form is:
+
+          !       [ \sqrt{R_11}          0                         0              ]
+          ! A  =  [  R_21/A_11  \sqrt{R_22-A_21^2}                 0              ]
+          !       [  R_31/A_11  (R_32-A_21A_31/A_22 \sqrt{R_33 - A_31^2 - A_32^2} ]
+
+          a=0.0
+          do j=1,dim
+             a(j*(j+1)/2)=sqrt(res(j))
+          end do
+
+          do j=1,dim
+             call set(ufl,j,i,dot_product(a((j-1)*j/2+1:j*(j+1)/2),uf(:j)))
+          end do
+
+       end do
+
+       min_mean_velocity=minval(mean_velocity%val,dim=2)
+       max_mean_velocity=maxval(mean_velocity%val,dim=2)
+            
+       do i=1,dim
+          call allmin(min_mean_velocity(i))
+          call allmax(max_mean_velocity(i))
+       end do
+
+       call set(eddy_inlet_velocity,mean_velocity)
+         
+       call addto(eddy_inlet_velocity,ufl)
+
+       re_ii_min = minval(reynolds_stresses%val,dim=2)
+       re_ii_max = maxval(reynolds_stresses%val,dim=2)         
+         
+         do i=1,dim
+            call allmin(re_ii_min(i))
+            call allmax(re_ii_max(i))
          end do
 
-         uf=uf*sqrt(vol/nots)
-         vf=vf*sqrt(vol/nots)
-         wf=wf*sqrt(vol/nots)
+         uflmin = minval(ufl%val,dim=2)
+         uflmax = maxval(ufl%val,dim=2)
 
-         ! Cholesky decomposition of the Re_ij
-         resuu=node_val(surface_field2,1,i)
-         resvv=node_val(surface_field2,2,i)
-         resww=node_val(surface_field2,3,i)
+         do i=1,dim
+            call allmin(uflmin(i))
+            call allmax(uflmax(i))
+         end do
 
-         if (resuu<0.)then
-            ewrite(3,*) 'WARNING: there is a negative value in Re_uu'
-            resuu=1.e-5
-         end if
-         if (resvv<0.)then
-            ewrite(3,*) 'WARNING: there is a negative value in Re_vv'
-            resvv=1.e-5
-         end if
-         if (resww<0.)then
-            ewrite(3,*) 'WARNING: there is a negative value in Re_ww'
-            resww=1.e-5
-         end if
-         
-         a11 = sqrt(resuu)
-         a21 = 0.
-         a22 = sqrt(resvv)
-         a31 = 0.
-         a32 = 0.
-         a33 = sqrt(resww)
-
-         ufl(i) = a11* uf
-         vfl(i) = a21*uf + a22*vf
-         wfl(i) = a31*uf + a32*vf + a33*wf
+         ewrite(3,*) 'inlet condition diagnostics'
+         ewrite(3,*) 'Re stresses min&max'
+      do i=1,dim
+         ewrite(3,*) 'Re_ii',i,':',re_ii_min(i),':',re_ii_max(i)
       end do
-
-      ! get min&max of mean velocities
-      minum=minval(surface_field1%val(1,:)); maxum=maxval(surface_field1%val(1,:))
-      minvm=minval(surface_field1%val(2,:)); maxvm=maxval(surface_field1%val(2,:))
-      minwm=minval(surface_field1%val(3,:)); maxwm=maxval(surface_field1%val(3,:))
-
-      call allmin(minum); call allmax(maxum)
-      call allmin(minvm); call allmax(maxvm)
-      call allmin(minwm); call allmax(maxwm)
-
-      ! calculate final velocity signal
-      do i = 1, bcnod
-         vl(1) = node_val(surface_field1,1,i)+ufl(i)
-         vl(2) = node_val(surface_field1,2,i)+vfl(i)
-         vl(3) = node_val(surface_field1,3,i)+wfl(i)
-         call set(surface_field,i,vl)
-      end do
-
-      ! calculate min&max of Re_ij
-      reuumn = minval(surface_field2%val(1,:)); reuumx=maxval(surface_field2%val(1,:))
-      revvmn = minval(surface_field2%val(2,:)); revvmx=maxval(surface_field2%val(2,:))
-      rewwmn = minval(surface_field2%val(3,:)); rewwmx=maxval(surface_field2%val(3,:))
-
-      call allmin(reuumn); call allmax(reuumx)
-      call allmin(revvmn); call allmax(revvmx)
-      call allmin(rewwmn); call allmax(rewwmx)
-
-      ! calculate min&max of fluctuating component
-      uflmn=minval(ufl); uflmx=maxval(ufl)
-      vflmn=minval(vfl); vflmx=maxval(vfl)
-      wflmn=minval(wfl); wflmx=maxval(wfl)
-
-      call allmin(uflmn); call allmax(uflmx)
-      call allmin(vflmn); call allmax(vflmx)
-      call allmin(wflmn); call allmax(wflmx)
-
-      ewrite(3,*) 'inlet condition diagnostics'
-      ewrite(3,*) 'Re stresses min&max'
-      ewrite(3,*) 'Re_uu',reuumn,':',reuumx
-      ewrite(3,*) 'Re_vv',revvmn,':',revvmx
-      ewrite(3,*) 'Re_ww',rewwmn,':',rewwmx
       ewrite(3,*) 'mean:fluctuating min&max'
-      ewrite(3,*) 'u',minum,maxum,':',uflmn,uflmx
-      ewrite(3,*) 'v',minvm,maxvm,':',vflmn,vflmx
-      ewrite(3,*) 'w',minwm,maxwm,':',wflmn,wflmx
+      do i=1,dim
+         ewrite(3,*) i, ':', min_mean_velocity(i), max_mean_velocity(i),':',uflmin(i),uflmax(i)
+      end do
 
-      deallocate(ufl,vfl,wfl)
+      call deallocate(ufl)
+
+      if (have_option("/io/checkpointing")) then
+         call checkpoint_synthetic_eddies(ns)
+      end if
 
       ewrite(3,*) 'leaving turbulent inlet boundary conditions routine'
+
+
     end subroutine synthetic_eddy_method
 
     !----------------------------------------------------------
 
-    function esign()
+    function esign(dim, num_eddies)
 
-      integer :: esign
-      real    :: i
+      integer, intent(in) :: dim, num_eddies
 
-      call random_number(i)
+      integer :: esign(dim, num_eddies)
+      real    :: i(dim, num_eddies)
 
-      if (i<0.5) then
+      ! Assign polarity to the synthetic eddies on a given boundary. 
+
+
+      call get_random_on_root(i,UNIFORM,"SyntheticEddyMethod")
+
+      where(i<0.5)
         esign = -1        
-      else
+      elsewhere
         esign = +1
-      endif
+      end where
 
       return 
      end function esign
-     
+
      !----------------------------------------------------------
      
-     subroutine initialise_sem_memory(ns,nots)
+     subroutine initialise_sem_memory(ns,dim,number_of_eddies)
 
        logical,save::initialise_memory=.false.
        logical,allocatable,dimension(:),save::initeddymem
-       integer:: ns, nots, nsem
-
-       nsem=sem_bc_count
+       integer:: ns, dim, number_of_eddies
 
        if(.not.initialise_memory)then
-          allocate(initeddymem(nsem))
+          allocate(initeddymem(sem_bc_count))
           initeddymem=.true.
-          allocate(eddies(nsem))
+          allocate(eddies(sem_bc_count))
           initialise_memory=.true.
        endif
        
        if(initeddymem(ns))then
-          allocate(eddies(ns)%xeddy(nots));allocate (eddies(ns)%yeddy(nots));allocate(eddies(ns)%zeddy(nots))
-          allocate(eddies(ns)%eu(nots))   ;allocate(eddies(ns)%ev(nots))    ;allocate(eddies(ns)%ew(nots))
+          allocate(eddies(ns)%plane(dim))
+          allocate(eddies(ns)%eddy_plane_positions(dim-1, number_of_eddies))
+          allocate(eddies(ns)%eddy_depth(number_of_eddies))
+          allocate(eddies(ns)%eddy_polarities(dim, number_of_eddies)) 
           initeddymem(ns)=.false.
        endif
        
@@ -576,7 +461,109 @@ contains
        end if
        
      end subroutine add_sem_bc
-     
+
+     subroutine checkpoint_synthetic_eddies(dump_no)
+       integer, intent(in) :: dump_no
+       character(len = OPTION_PATH_LEN) :: filename
+       integer :: bc_id, i, idx, stat, esize, lsize, dim
+       integer, dimension(:), allocatable :: bc_ids
+       real, dimension(:,:), allocatable :: positions,  polarities
+
+       if (getprocno()/=1) return
+          ! write to eddies to file only from the head node
+
+       call get_option('/simulation_name',filename)
+       filename=trim(filename)//'_synthetic_eddies_'//int2str(dump_no)&
+            //'_checkpoint.vtp'
+       call add_option('/embedded_models/synthetic_eddies/read_from_file',stat)
+       call set_option('/embedded_models/synthetic_eddies/read_from_file',&
+            trim(filename),stat)
+
+       call get_option('/geometry/dimension',dim)
+
+       esize = 0
+       do bc_id=1,sem_bc_count 
+          esize = esize + size(eddies(bc_id)%eddy_depth)
+       end do
+
+       allocate(bc_ids(esize), polarities(esize,3), positions(esize,3))
+
+       polarities = 0
+       positions  = 0.0
+
+       idx=0
+       do bc_id=1,sem_bc_count
+          lsize = size(eddies(bc_id)%eddy_depth)
+          bc_ids(idx+1:idx+lsize) = bc_id
+          do i=1,dim
+             polarities(idx+1:idx+lsize,i) = eddies(bc_id)%eddy_polarities(i,:)
+          end do
+          positions(idx+1:idx+lsize,eddies(bc_id)%plane(1:dim-1))  = eddies(bc_id)%eddy_plane_positions
+          positions(idx+1:idx+lsize,eddies(bc_id)%plane(dim))  = eddies(bc_id)%eddy_depth(i)
+          
+          idx = idx + lsize
+       end do
+
+       !!! now write a file:
+
+       call vtpopen(trim(filename),trim(filename))
+       call vtpwritepoints(esize, positions(:,1), positions(:,2),&
+            positions(:,3))
+       
+       call vtpwritesn(bc_ids, "BoundaryID")
+       call vtpwritevn(polarities(:,1),&
+            polarities(:,2),polarities(:,3),&
+            "Polarity")
+       
+       if(getnprocs() > 1) then
+          call vtppclose(getrank(), getnprocs())
+       else
+          call vtpclose()
+       end if
+
+     end subroutine checkpoint_synthetic_eddies
+
+     subroutine read_eddies_from_checkpoint()
+       character(len = OPTION_PATH_LEN) :: filename, path
+       integer :: esize, nscalars, nvectors, ntensors, bc_id, i, j, &
+            idx, dim, lsize
+       real, dimension(:), allocatable :: bc_ids, polarities, tensors
+        real, dimension(:,:), allocatable :: positions
+ 
+       path ='/embedded_models/synthetic_eddies/read_from_file'
+
+       call get_option(path,filename)
+       call get_option('/geometry/dimension',dim)
+       
+       call vtpopentoread(trim(filename),trim(filename))
+       call vtpgetsizes(esize,nscalars,nvectors,ntensors)
+
+       allocate(positions(esize,3),bc_ids(esize),&
+            polarities(3*esize), tensors(0))
+       call vtpread(positions(:,1),positions(:,1),positions(:,3),bc_ids,polarities,tensors)
+
+
+       idx=0
+       do bc_id=1,sem_bc_count
+          !! count the number in each eddy
+          lsize = size(eddies(bc_id)%eddy_depth)
+          eddies(bc_id)%eddy_depth=positions(idx+1:idx+lsize,eddies(bc_id)%plane(dim))
+          do j=1,dim-1
+             eddies(bc_id)%eddy_plane_positions(j,:)=&
+                  positions(idx+1:idx+lsize,eddies(bc_id)%plane(j))
+          end do
+
+          do j=1,lsize
+             do i=1,dim
+                eddies(bc_id)%eddy_polarities(i,j)=int(polarities((idx+j-1)*3+i))
+             end do
+          end do
+
+          idx=idx+lsize
+          
+       end do
+
+     end subroutine read_eddies_from_checkpoint
      
    end module synthetic_bc
    
