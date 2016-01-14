@@ -481,7 +481,7 @@ underlying equations within the moving frame. Extra terms then need to be consid
 which account for the fact that the acceleration of a fluid parcel relative to the 
 moving reference frame is different to the acceleration with respect to the fixed 
 inertial frame, and the latter is the one which allows us to invoke Newton's Laws.
-For useful discussions see \citep{batchelor1967,cushman1994,gill1982}.
+For useful discussions see \citep{batchelor1967,pedlosky,cushman1994,gill1982}.
 
 \begin{figure}\label{fig:rotating_frame}
 \centering
@@ -494,13 +494,13 @@ frame: $\bmi$ points Eastwards, $\bmj$ points Northwards and $\bmk$ points in th
 \end{figure}
 
 It is possible to form the equations with respect to a moving reference frame as long as the
-additional force or acceleration term is included. In the case of a rotating frame that is
+additional force or acceleration terms are included. In the case of a rotating frame that is
 just by replacing the material derivative in the momentum equation by
 \begin{equation}
-\DDt{\bmu} + 2\bmOmega\times\bmu,
+\DDt{\bmu} + 2\bmOmega\times\bmu +\bmOmega\times\left(\bmOmega\times \bmx \right),
 \end{equation}
 where $\bmOmega$ is the angular velocity vector of the rotating
-system.
+system and $\bm{x}$ is a coordinate system with the origin at a point on that axis. The first additional term applies a perceived deflection to moving objects, termed the Coriolis force. The second term represents an apparent body force, the centrifugal force, acting to accelerate the fluid outwards from the axis of rotation. In geophysical systems this is often combined with other body forces such as gravity, while it may be safely neglected when the angular speed of rotation is small.
 
 Consider the Earth with a rotation vector in an inertial reference frame given by 
 \begin{equation}\label{eq:on_sphere_rotation}

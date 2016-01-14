@@ -42,10 +42,13 @@ module stochastic
   
   implicit none
 
-  integer, parameter :: UNIFORM=1, NORMAL=2
+  integer, parameter :: UNIFORM=1, NORMAL=2, CAUCHY=3,&
+       SPHERE=4
   logical, save :: initialised=.false.
   integer, allocatable, dimension(:) :: generic_seed
   integer :: seed_size
+
+  real, parameter :: pi=3.14159265358979324
 
   type(string_hash_table) :: named_seed
 
@@ -388,9 +391,41 @@ contains
 
   end subroutine normal_random_number
 
+  subroutine cauchy_random_number(harvest)
+    real, dimension(:), intent(out) :: harvest
+
+    ! obtain a random number from the Cauchy(0,1) distribution
+
+    ! To remap to the Cauchy(mu,sig) distribution use
+    ! call cauchy_random_number(harvest)
+    ! X=mu+sig*cauchy
 
 
+    call get_random(harvest,UNIFORM)
+
+    harvest=tan(pi*(harvest-0.5))
+
+  end subroutine cauchy_random_number
     
+  subroutine spherical_random_number(harvest)
+    real, dimension(:,:), intent(out) :: harvest
+
+    real, dimension(size(harvest,2)) :: phi, theta
+
+    assert(size(harvest,1)==3)
+
+    call get_random(theta,UNIFORM)
+
+    call get_random(phi,UNIFORM)
+
+    phi=asin(2.0*phi-1.0)
+
+    harvest(1,:)=sin(2.0*pi*theta)*cos(phi)
+    harvest(2,:)=cos(2.0*pi*theta)*cos(phi)
+    harvest(3,:)=sin(phi)
+    
+
+  end subroutine spherical_random_number
 
 
   function get_random_point_in_simplex(X,p) result(point)
@@ -419,9 +454,10 @@ contains
 
   end function get_random_point_in_simplex
 
-  function get_random_points_in_mesh(X,npoints) result(pts)
+  function get_random_points_in_mesh(X,npoints,pdf) result(pts)
     type(vector_field), intent(in) :: X
     integer, intent(in)            :: npoints
+    type(scalar_field), intent(in), optional :: pdf
 
     real, dimension(X%dim,npoints) :: pts
     ! locals
@@ -439,22 +475,38 @@ contains
        FLAbort("Trying to allocate stochastic detectors on a domain of zero measure. Check any surface ids are actually present in the mesh")
     end if
 
-    if (element_owned(X,1)) then
-       cumulative_volume(1)=element_volume(X,1)
-    else
-       cumulative_volume(1)=0.0
-    end if
-    do ele=2,element_count(X)
-       if (element_owned(X,ele)) then
-          cumulative_volume(ele)=element_volume(x,ele)&
-               +cumulative_volume(ele-1)
+    if (present(pdf)) then
+       if (element_owned(X,1)) then
+          cumulative_volume(1)=element_volume_field_weighted(X,pdf,1)
        else
-          cumulative_volume(ele)=cumulative_volume(ele-1)
+          cumulative_volume(1)=0.0
        end if
-    end do
-    
-    cumulative_volume=cumulative_volume&
-         /cumulative_volume(size(cumulative_volume))
+       do ele=2,element_count(X)
+          if (element_owned(X,ele)) then
+             cumulative_volume(ele)=element_volume_field_weighted(x,pdf,ele)&
+                  +cumulative_volume(ele-1)
+          else
+             cumulative_volume(ele)=cumulative_volume(ele-1)
+          end if
+       end do
+    else
+       if (element_owned(X,1)) then
+          cumulative_volume(1)=element_volume(X,1)
+       else
+          cumulative_volume(1)=0.0
+       end if
+       do ele=2,element_count(X)
+          if (element_owned(X,ele)) then
+             cumulative_volume(ele)=element_volume(x,ele)&
+                  +cumulative_volume(ele-1)
+          else
+             cumulative_volume(ele)=cumulative_volume(ele-1)
+          end if
+       end do
+
+       cumulative_volume=cumulative_volume&
+            /cumulative_volume(size(cumulative_volume))
+    end if
 
     call get_random(q,UNIFORM)
     mask=.true.
@@ -468,7 +520,12 @@ contains
     end do
 
     do i=1,npoints
-       pts(:,i)=get_random_point_in_simplex(ele_val(X,elist(i)))
+       if (present(pdf)) then
+          pts(:,i)=get_random_point_in_simplex(ele_val(X,elist(i)),&
+               ele_val(pdf,elist(i)))
+       else
+          pts(:,i)=get_random_point_in_simplex(ele_val(X,elist(i)))
+       end if
     end do        
   end function get_random_points_in_mesh
 

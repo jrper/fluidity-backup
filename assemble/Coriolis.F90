@@ -29,11 +29,14 @@
 
 module coriolis_module
 
+  use fields
+
   use embed_python 
   use fldebug
   use parallel_tools, only: abort_if_in_parallel_region
   use global_parameters, only : current_time, PYTHON_FUNC_LEN
   use spud
+  use vector_tools
   
   implicit none
   
@@ -42,24 +45,26 @@ module coriolis_module
   !! from the options tree, this is to avoid having to read the options
   !! in performance critical routines in this module. They are private
   !! and should not be accessed directly
-  real, save :: f0
+  real, save :: f0, dOmega_dt
   real, dimension(:), pointer, save :: coriolis_beta
   real, save :: latitude0, R_earth
   ! coriolis_option has to have one of the following values:
   integer, parameter :: NO_CORIOLIS=0, F_PLANE=1, BETA_PLANE=2, &
-     SINE_OF_LATITUDE=3, CORIOLIS_ON_SPHERE=4, PYTHON_F_PLANE=5, NOT_INITIALISED=-1
+     SINE_OF_LATITUDE=3, CORIOLIS_ON_SPHERE=4, PYTHON_F_PLANE=5, CORIOLIS_WITH_AXIS=6, CORIOLIS_WITH_AXIS_UNSTEADY=7, NOT_INITIALISED=-1
   integer, save :: coriolis_option=NOT_INITIALISED
   
   character(len = PYTHON_FUNC_LEN), save :: coriolis_python_func
   logical, save :: python_coriolis_initialised = .false.
   real, save :: python_coriolis_time
+  real, dimension(3), save :: point_on_axis
+  real, dimension(3), parameter :: axis = [0.0,0.0,1.0]
   
   ! legacy thing for use in funome():
   integer, save :: coriolis_dim=3
      
   private
   
-  public :: coriolis, funome, set_coriolis_parameters
+  public :: coriolis, funome, set_coriolis_parameters, centrifugal_force
 
   contains
 
@@ -86,12 +91,26 @@ module coriolis_module
     case (PYTHON_F_PLANE)
       call update_f_plane_coriolis()
       coriolis = f0
+    case (CORIOLIS_WITH_AXIS)
+      coriolis=f0
+   case (CORIOLIS_WITH_AXIS_UNSTEADY)
+      call update_unsteady_coriolis()
+      coriolis=f0
     case default
       ewrite(-1,*) "coriolis_option:", coriolis_option
       FLAbort("Unknown coriolis option")
     end select
   
   end function coriolis
+
+  subroutine update_unsteady_coriolis()
+    if (current_time/=python_coriolis_time) then
+       f0=f0+2.0*dOmega_dt*(current_time-python_coriolis_time)
+       python_coriolis_time=current_time
+    end if
+  end subroutine update_unsteady_coriolis
+
+
 
   subroutine update_f_plane_coriolis()
     !!< Update python set f-plane Coriolis variables
@@ -140,10 +159,75 @@ module coriolis_module
     funome=omega(1)
 
   end function funome
+
+  function centrifugal_force(X,u,ele) result (force)
+    type(vector_field), intent(in) :: X,u
+    integer, intent(in) :: ele
+    real, dimension(mesh_dim(X),ele_ngi(u,ele)) :: force
+
+    integer :: gi, dim
+    real, dimension(mesh_dim(X),ele_ngi(X,ele)) :: X_quad
+    real, dimension(mesh_dim(X)) :: x_cross
+
+    !!! subroutine calculates the centrigual force source term at velocity 
+    !!! quadrature points.
+
+    !!! F=-\rho \vec{\Omega}\times(\vec{\Omega}\times\vec{x})  
+    !!!  = -\rho (\Omega^2 \vec{x} - \Vec{\Omega}\cdot \vec{x} \vec{Omega}) 
+
+    dim=mesh_dim(X)
+    X_quad=ele_val_at_quad(X,ele)
+
+    do gi=1,ele_ngi(u,ele)
+       if(dim==2) then
+          x_cross=[-X_quad(2,gi)+point_on_axis(2),X_quad(1,gi)-point_on_axis(1)]
+       else
+          x_cross=cross_product(axis,X_quad(:,gi))
+       end if
+
+       force(:,gi)=(f0/2.0)**2*(X_quad(:,gi)-point_on_axis(1:dim)-dot_product(X_quad(:,gi)-point_on_axis(1:dim),axis(1:dim))*axis(1:dim))&
+            +dOmega_dt*x_cross
+    end do
+
+  end function centrifugal_force
+
+  subroutine centrifugal_potential(sfield,density,X)
+    type(scalar_field), intent(inout) :: sfield
+    type(scalar_field), intent(in) :: density
+    type(vector_field), intent(in) :: X
+
+    type(vector_field) :: X_on_s
+    type(scalar_field) :: density_on_s
+
+    integer :: node, dim
+
+    dim=mesh_dim(X)
+
+    call allocate(X_on_s,dim,sfield%mesh,"Coordinates")
+    call allocate(density_on_s,sfield%mesh,"Coordinates")
+    call remap_field(X,X_on_s)
+    call remap_field(density,density_on_s)
+
+
+    do node=1,node_count(sfield)
+
+       call set(sfield,node,&
+          (f0/2.0)**2*sum(cross_product(axis(1:dim),node_val(X_on_s,node)-point_on_axis(1:dim))**2)/2.0)
+    end do
+       
+    call scale(sfield,density_on_s)
+    
+    call deallocate(X_on_s)
+    call deallocate(density_on_s)
+
+
+  end subroutine centrifugal_potential
+
   
   subroutine set_coriolis_parameters
     
     real:: omega
+    integer, dimension(2) :: dim
     
     if (coriolis_option/=NOT_INITIALISED) return
 
@@ -200,8 +284,26 @@ module coriolis_module
       
       call get_option("/physical_parameters/coriolis/python_f_plane", coriolis_python_func)
       coriolis_option = PYTHON_F_PLANE
-       
-    else
+    else if (have_option("/physical_parameters/coriolis/specified_axis")) then
+       call get_option("/physical_parameters/coriolis/specified_axis/&
+            &rotational_velocity", omega)  
+       f0=2.0*omega
+       point_on_axis=0.0
+       dim=option_shape("/physical_parameters/coriolis/specified_axis/&
+            &point_on_axis")
+       call get_option("/physical_parameters/coriolis/specified_axis/&
+            &point_on_axis", point_on_axis(1:dim(1)))  
+
+       if (have_option("/physical_parameters/coriolis/specified_axis/&
+            &rate_of_change")) then
+          call get_option("/physical_parameters/coriolis/specified_axis/&
+            &rate_of_change",dOmega_dt)
+          coriolis_option=CORIOLIS_WITH_AXIS_UNSTEADY
+       else
+          dOmega_dt=0.0
+          coriolis_option=CORIOLIS_WITH_AXIS
+       end if
+    else 
     
       ewrite(2, *) "Coriolis type: None"
     
