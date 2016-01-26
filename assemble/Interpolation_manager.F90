@@ -385,8 +385,6 @@ contains
             call get_option("/geometry/mesh[" // int2str(mesh - 1) // "]/name", mesh_name)
             old_mesh => extract_mesh(states_old(1), trim(mesh_name))
             new_mesh => extract_mesh(states_new(1), trim(mesh_name))
-            old_pos = extract_vector_field(meshes_old(mesh), "Coordinate")
-            new_pos = extract_vector_field(meshes_new(mesh), "Coordinate")
             
             call insert(alg_old(mesh), old_mesh, "Mesh")
             call insert(alg_new(mesh), new_mesh, "Mesh")
