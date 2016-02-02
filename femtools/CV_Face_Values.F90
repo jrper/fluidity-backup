@@ -295,12 +295,12 @@ contains
 
        if (inflow) then
           p_ele=matmul(X_ele,cvshape%n(:,ggi))-Xcv_ele(:,oloc)
-          face_val = dot_product(field_grad(:,oloc),p_ele)
-          old_face_val = dot_product(old_field_grad(:,oloc),p_ele)
+          face_val = field_ele(oloc) + dot_product(field_grad(:,oloc),p_ele)
+          old_face_val = old_field_ele(oloc) + dot_product(old_field_grad(:,oloc),p_ele)
        else
           p_ele=matmul(X_ele,cvshape%n(:,ggi))-Xcv_ele(:,iloc)
-          face_val = dot_product(field_grad(:,iloc),p_ele)
-          old_face_val = dot_product(old_field_grad(:,iloc),p_ele)
+          face_val = field_ele(iloc) + dot_product(field_grad(:,iloc),p_ele)
+          old_face_val = old_field_ele(iloc) + dot_product(old_field_grad(:,iloc),p_ele)
        end if
 
    end select
