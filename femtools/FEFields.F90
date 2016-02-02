@@ -26,7 +26,7 @@ module fefields
   private
   public :: compute_lumped_mass, compute_mass, compute_projection_matrix, add_source_to_rhs, &
             compute_lumped_mass_on_submesh, compute_cv_mass, project_field
-  public :: create_subdomain_mesh, compute_cv_barycentre_coordinate, get_cv_coordinate_field
+  public :: create_subdomain_mesh, compute_cv_barycentre_offsets, get_cv_coordinate_field
 
 
 contains
@@ -440,9 +440,9 @@ contains
 
   end function compute_projection_matrix
 
-  subroutine compute_cv_barycentre_coordinate(positions, cv_positions, cv_mass)
+  subroutine compute_cv_barycentre_offsets(positions, cv_positions, cv_mass)
 
-    !!< Compute the barycentre of the cvs associated with the 
+    !!< Compute the barycentre offest of the cvs associated with the 
     !!< input scalar fields mesh. This will use pre tabulated
     !!< coefficients - which is only set up for constant, linear elements and 
     !!< selected quadratic elements. This assumes that all 
@@ -520,12 +520,12 @@ contains
               
        select case(dim)
        case(1)
-          subcv_ele_volf(:,1)=[0.75,0.25]/real(loc)
-          subcv_ele_volf(:,2)=[0.25,0.75]/real(loc)
+          subcv_ele_volf(:,1)=[-0.25,0.25]/real(loc)
+          subcv_ele_volf(:,2)=[0.25,-0.25]/real(loc)
        case(2)
-          subcv_ele_volf(:,1) = [0.611111111111111,0.194444444444444,0.194444444444444]/real(loc)
-          subcv_ele_volf(:,2) = [0.194444444444444,0.611111111111111,0.194444444444444]/real(loc)/real(loc)
-          subcv_ele_volf(:,3) = [0.194444444444444,0.194444444444444,0.611111111111111]/real(loc)
+          subcv_ele_volf(:,1) = [-0.388888888888888,0.194444444444444,0.194444444444444]/real(loc)
+          subcv_ele_volf(:,2) = [0.194444444444444,-0.388888888888888,0.194444444444444]/real(loc)/real(loc)
+          subcv_ele_volf(:,3) = [0.194444444444444,0.194444444444444,-0.388888888888888]/real(loc)
        case default
           FLAbort("Your code appears to have control volumes of unusal dimension(0 or >3). I'm afraid you'll need to do some maths to get the centres of mass.")
        end select
@@ -536,10 +536,10 @@ contains
        
     end if
     
-    do ele = 1,element_count(cv_mass)
+    do ele = 1,element_count(cv_positions)
 
        nodes => ele_nodes(cv_positions, ele)
-       X = ele_val(cv_positions,ele)
+       X = ele_val(positions,ele)
           
 
        do i=1,loc
@@ -561,28 +561,31 @@ contains
        deallocate(lcv_mass)
     end if
     
-  end subroutine compute_cv_barycentre_coordinate
+  end subroutine compute_cv_barycentre_offsets
 
   function get_cv_coordinate_field(state, mesh) result (cv_positions)
   !!< Returns a barycentric control volume coordinate field for the given
   !!< finite element mesh, that has the same
   !!< shape (and thus number of nodes) in each element. 
   !!< NOTE: The returned vector_field should always be deallocated
-  type(state_type), intent(inout):: state
-  type(mesh_type), intent(in):: mesh
-  type(vector_field) cv_positions
+    type(state_type), intent(inout):: state
+    type(mesh_type), intent(in):: mesh
+    type(vector_field) cv_positions, cv_offsets
     
     type(vector_field), pointer:: coordinate_field    
-    type(mesh_type) :: unperiodic_mesh
-    logical:: can_remap_from_coordinate_field
       
     if (has_vector_field(state, trim(mesh%name)//"CVCoordinate")) then
       cv_positions=extract_vector_field(state, trim(mesh%name)//"CVCoordinate")
       call incref(cv_positions)
     else 
       coordinate_field => extract_vector_field(state, "Coordinate")
-      call allocate(cv_positions,coordinate_field%dim,mesh,trim(mesh%name)//"CVCoordinate")
-      call compute_cv_barycentre_coordinate(coordinate_field,cv_positions)
+      call allocate(cv_positions,coordinate_field%dim,&
+           coordinate_field%mesh,trim(mesh%name)//"CVCoordinate")
+      call allocate(cv_offsets,coordinate_field%dim,mesh,trim(mesh%name)//"CVOffsets")
+      call compute_cv_barycentre_offsets(coordinate_field,cv_offsets)
+      call remap_field(cv_offsets, cv_positions)
+      call addto(cv_positions,coordinate_field)
+      call deallocate(cv_offsets)
       call insert(state,cv_positions,name=trim(mesh%name)//"CVCoordinate")
     end if
     
