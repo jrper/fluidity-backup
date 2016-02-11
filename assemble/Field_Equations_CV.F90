@@ -29,34 +29,34 @@
 module field_equations_cv
   !!< This module contains the assembly subroutines for advection
   !!< using control volumes
+ use spud
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
+  use cv_faces
+  use parallel_tools, only: getprocno
+  use transform_elements, only: transform_cvsurf_to_physical, &
+transform_cvsurf_facet_to_physical
   use fields
   use sparse_matrices_fields
-  use sparsity_patterns_meshes
   use state_module
-  use spud
+  use sparsity_patterns_meshes
   use cv_shape_functions
-  use cv_faces
+  use field_options
   use cvtools
-  use cv_fields
+  use cv_options
+  use boundary_conditions
+  use halos
   use cv_upwind_values
   use cv_face_values
-  use diagnostic_fields, only: calculate_diagnostic_variable
-  use cv_options
-  use diagnostic_variables, only: field_tag
-  use boundary_conditions
-  use boundary_conditions_from_options
-  use divergence_matrix_cv, only: assemble_divergence_matrix_cv
-  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use fefields, only: compute_cv_mass, get_cv_coordinate_field
-  use petsc_solve_state_module
-  use transform_elements, only: transform_cvsurf_to_physical, &
-                                transform_cvsurf_facet_to_physical
-  use parallel_tools, only: getprocno
-  use halos
-  use field_options
   use state_fields_module
-  use porous_media
+  use diagnostic_fields, only: calculate_diagnostic_variable
+  use cv_fields
+  use diagnostic_variables, only: field_tag
+  use boundary_conditions_from_options
   use multiphase_module
+  use divergence_matrix_cv, only: assemble_divergence_matrix_cv
+  use petsc_solve_state_module
+  use porous_media
 
   implicit none
 
@@ -116,7 +116,7 @@ contains
       type(scalar_field), pointer :: tdensity, oldtdensity
       ! Coordinate field(s)
       type(vector_field), pointer :: x, x_old, x_new
-      type(vector_field) :: x_tfield, xcv_tfield
+      type(vector_field) :: x_tfield
 
       type(tensor_field), pointer :: diffusivity
       type(scalar_field), pointer :: source, absorption
@@ -356,10 +356,6 @@ contains
       ! the Coordinate field on the same mesh as tfield
       x_tfield=get_coordinate_field(state(istate), tfield%mesh)
 
-
-      if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) &
-           xcv_tfield=get_cv_coordinate_field(state(istate), tfield%mesh)
-
       ! are we including the mass (generally yes)?
       include_mass = .not.have_option(trim(tfield%option_path)//"/prognostic/spatial_discretisation/control_volumes/mass_terms/exclude_mass_terms")
 
@@ -572,7 +568,7 @@ contains
 
       ! allocate the rhs of the equation
       call allocate(rhs, tfield%mesh, name=trim(field_name)//"RHS")
-     
+      
       ! are we including a porosity coefficient on the time term?
       if (have_option(trim(complete_field_path(tfield%option_path))//'/porosity')) then
          include_porosity = .true.
@@ -734,8 +730,7 @@ contains
                                         x_cvshape_full, x_cvbdyshape_full, &
                                         t_cvshape_full, t_cvbdyshape_full, &
                                         diff_cvshape_full, diff_cvbdyshape_full, &
-                                        state(istate:istate), advu, ug, x,&
-                                        x_tfield, xcv_tfield, cfl_no, sub_dt, &
+                                        state(istate:istate), advu, ug, x, x_tfield, cfl_no, sub_dt, &
                                         diffusivity, q_cvmass, &
                                         mesh_sparsity_x, grad_m_t_sparsity)
           end if
@@ -827,9 +822,6 @@ contains
         call deallocate(diff_rhs)
       end if
       call deallocate(x_tfield)
-      if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) then
-         call deallocate(xcv_tfield)
-      end if
       if(move_mesh) then
         call deallocate(t_cvmass_new)
         call deallocate(t_cvmass_old)
@@ -1340,7 +1332,7 @@ contains
                                        x_cvshape_full, x_cvbdyshape_full, &
                                        t_cvshape_full, t_cvbdyshape_full, &
                                        diff_cvshape_full, diff_cvbdyshape_full, &
-                                       state, advu, ug, x, x_tfield, xcv_tfield, cfl_no, dt, &
+                                       state, advu, ug, x, x_tfield, cfl_no, dt, &
                                        diffusivity, q_cvmass, &
                                        mesh_sparsity, grad_m_t_sparsity)
 
@@ -1391,7 +1383,7 @@ contains
       type(vector_field), intent(in) :: advu
       type(vector_field), pointer :: ug
       ! the coordinates (base and on the tfield mesh)
-      type(vector_field), intent(inout) :: x, x_tfield, xcv_tfield
+      type(vector_field), intent(inout) :: x, x_tfield
       ! the cfl number
       type(scalar_field), intent(in) :: cfl_no
       ! timestep
@@ -1415,7 +1407,6 @@ contains
       ! and the cfl number at the gauss pts and nodes
       real, dimension(x%dim,ele_loc(x,1)) :: x_ele
       real, dimension(x%dim,ele_loc(tfield,1)) :: xt_ele
-      real, dimension(x%dim,ele_loc(tfield,1)) :: xcv_ele
       real, dimension(x%dim,face_loc(x,1)) :: x_ele_bdy
       real, dimension(x%dim,x_cvshape%ngi) :: x_f
       real, dimension(advu%dim,u_cvshape%ngi) :: u_f
@@ -1459,13 +1450,6 @@ contains
       type(csr_matrix)  :: tfield_upwind, &
             oldtfield_upwind, tdensity_upwind, oldtdensity_upwind
 
-
-      ! ENO fields
-
-      type(vector_field) :: gnew, gold
-      type(scalar_field) :: tENO, oldtENO
-      real, dimension(mesh_dim(tfield),ele_loc(tfield,1)) :: ele_grad, old_ele_grad
-      
       ! incoming or outgoing flow
       real :: udotn, divudotn, income
       logical :: inflow
@@ -1530,26 +1514,6 @@ contains
 
       end if
 
-      if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) then
-         if (tfield_options%weno_parameter<0) then
-            if(tfield_options%eno_directional) then
-               call k_one_ENO_select(tfield,xcv_tfield,tENO,gnew,advu)
-               call k_one_ENO_select(oldtfield,xcv_tfield,oldtENO,gold,advu)
-            else
-               call k_one_ENO_select(tfield,xcv_tfield,tENO,gnew)
-               call k_one_ENO_select(oldtfield,xcv_tfield,oldtENO,gold)
-            end if
-         else
-            if(tfield_options%eno_directional) then
-               call k_one_WENO_select(tfield,xcv_tfield,tENO,gnew,tfield_options%weno_parameter,advu)
-               call k_one_WENO_select(oldtfield,xcv_tfield,oldtENO,gold,tfield_options%weno_parameter,advu)
-            else
-               call k_one_WENO_select(tfield,xcv_tfield,tENO,gnew,tfield_options%weno_parameter)
-               call k_one_WENO_select(oldtfield,xcv_tfield,oldtENO,gold,tfield_options%weno_parameter)
-            end if
-         end if
-      end if
-
       ! does the density field need upwind values?
       if(include_density) then
         call allocate(tdensity_upwind, mesh_sparsity, name="TDensityUpwindValues")
@@ -1599,9 +1563,6 @@ contains
       element_loop: do ele=1, element_count(tfield)
         x_ele=ele_val(x, ele)
         xt_ele=ele_val(x_tfield, ele)
-        if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) then
-           xcv_ele=ele_val(xcv_tfield, ele)
-        end if
         x_f=ele_val_at_quad(x, ele, x_cvshape)
         nodes=>ele_nodes(tfield, ele)
         ! the nodes in this element from the coordinate mesh projected
@@ -1661,12 +1622,6 @@ contains
           end if
         end if
 
-
-        if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) then
-           ele_grad=ele_val(gnew,ele)
-           old_ele_grad=ele_val(gnew,ele)
-        end if
-
         notvisited=.true.
 
         grad_mat_local = 0.0
@@ -1723,10 +1678,7 @@ contains
                                           tfield_ele, oldtfield_ele, &
                                           tfield_upwind, oldtfield_upwind, &
                                           inflow, cfl_ele, &
-                                          tfield_options,&
-                                          field_grad=ele_grad,&
-                                          old_field_grad=old_ele_grad,&
-                                          X_ele=xt_ele, xcv_ele=xcv_ele)
+                                          tfield_options)
 
                     ! perform the time discretisation on the combined tdensity tfield product
                     tfield_theta_val=theta_val(iloc, oloc, &
@@ -2286,14 +2238,6 @@ contains
       if(assemble_diffusion.and.(tfield_options%diffusionscheme==CV_DIFFUSION_BASSIREBAY)) then
         call deallocate(div_m)
         call deallocate(grad_rhs)
-      end if
-
-
-      if (tfield_options%facevalue==CV_FACEVALUE_ENO_CPAIN) then
-         call deallocate(gnew)
-         call deallocate(gold)
-         call deallocate(tENO)
-         call deallocate(oldtENO)
       end if
 
       ewrite(1, *) "Exiting assemble_advectiondiffusion_m_cv"
