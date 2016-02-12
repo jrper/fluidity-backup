@@ -41,6 +41,8 @@ use spud
 use integer_set_module
 use sparse_tools
 use transform_elements
+use fetools
+use parallel_fields
 use fields
 use state_module
 use boundary_conditions

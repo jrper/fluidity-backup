@@ -37,6 +37,7 @@ module read_exodusii
   use futils
   use elements
   use spud
+  use parallel_tools
   use fields
   use state_module
   use vtk_interfaces

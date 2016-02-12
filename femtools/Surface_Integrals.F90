@@ -34,7 +34,9 @@ module surface_integrals
   use spud
   use quadrature
   use elements
+  use parallel_tools
   use parallel_fields
+  use transform_elements
   use fields
   use state_module
   use field_options

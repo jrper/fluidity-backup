@@ -6,6 +6,8 @@ module project_metric_to_surface_module
   use spud
   use sparse_tools
   use vector_tools
+  use transform_elements
+  use fetools
   use fields
   use merge_tensors
   use state_module

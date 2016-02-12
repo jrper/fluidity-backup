@@ -6,6 +6,8 @@ module limit_metric_module
   use vector_tools, only : determinant => det
   use elements
   use spud
+  use parallel_tools
+  use parallel_fields
   use fields
   use meshdiagnostics
 

@@ -45,9 +45,9 @@ module geostrophic_pressure
   use fefields
   use assemble_cmc
   use boundary_conditions
+  use sparsity_patterns
   use dgtools
   use solvers
-  use sparsity_patterns
   use sparsity_patterns_meshes
   use state_fields_module
   use surfacelabels

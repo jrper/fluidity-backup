@@ -32,7 +32,9 @@ module detector_parallel
   use integer_hash_table_module
   use mpi_interfaces
   use halo_data_types
+  use parallel_tools
   use halos_numbering
+  use parallel_fields
   use fields
   use state_module
   use detector_data_types

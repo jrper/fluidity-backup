@@ -28,11 +28,12 @@
 #include "fdebug.h"
 
 module Coordinates
-  use FLDebug
+  use fldebug
   use vector_tools
   use iso_c_binding
   use global_parameters
   use spud
+  use parallel_tools, only: isparallel
   use halos_base
   use fields
   use sparse_tools_petsc

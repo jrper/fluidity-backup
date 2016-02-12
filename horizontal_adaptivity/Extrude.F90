@@ -11,6 +11,7 @@ module hadapt_extrude
   use spud
   use sparse_tools
   use linked_lists
+  use parallel_fields
   use fields
   use vtk_interfaces
   use halos

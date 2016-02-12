@@ -28,6 +28,7 @@
 module fields_halos
 !!< This module contains code that depends on both fields and halos
 use data_structures
+use parallel_tools
 use fields
 use halos
 implicit none

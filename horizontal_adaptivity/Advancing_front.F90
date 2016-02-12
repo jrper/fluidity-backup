@@ -8,6 +8,7 @@ module hadapt_advancing_front
   use sparse_tools
   use linked_lists
   use adjacency_lists
+  use parallel_fields
   use fields
   use meshdiagnostics
   use halos_derivation
