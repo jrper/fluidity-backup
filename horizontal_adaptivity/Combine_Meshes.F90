@@ -11,6 +11,7 @@ module hadapt_combine_meshes
   use spud
   use sparse_tools
   use linked_lists
+  use parallel_fields
   use fields
   use halos
   use hadapt_advancing_front

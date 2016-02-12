@@ -30,10 +30,13 @@
 module sediment_diagnostics 
 
   use global_parameters, only:FIELD_NAME_LEN, OPTION_PATH_LEN, dt, timestep
+  use vector_tools
   use quadrature
   use elements
   use spud
   use sparse_tools
+  use fetools
+  use fetools
   use fields
   use state_module
   use fefields

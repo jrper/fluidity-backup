@@ -97,6 +97,13 @@ implicit none
   interface norm2_difference
     module procedure norm2_difference_single, norm2_difference_multiple
   end interface
+
+  private
+
+  public :: mean, maxval, minval, sum, norm2, field_stats, field_cv_stats,&
+  	 field_integral, fields_integral, function_val_at_quad,&
+	 dot_product, outer_product, norm2_difference, magnitude,&
+	 magnitude_tensor, merge_meshes, distance
     
   integer, parameter, public :: CONVERGENCE_INFINITY_NORM=0, CONVERGENCE_L2_NORM=1, CONVERGENCE_CV_L2_NORM=2
   

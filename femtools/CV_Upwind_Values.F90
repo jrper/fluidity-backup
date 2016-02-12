@@ -35,15 +35,16 @@ module cv_upwind_values
   use spud
   use sparse_tools
   use cv_faces
-  use transform_elements, only: transform_cvsurf_facet_to_physical
+  use transform_elements, only: transform_cvsurf_facet_to_physical, transform_facet_to_physical
+  use fetools, only: INFINITY, shape_vector_rhs
   use fields
   use state_module
   use cv_shape_functions, only: make_cvbdy_element_shape
   use cvtools, only: complete_cv_field_path
   use cv_options
   use boundary_conditions, only: get_periodic_boundary_condition, &
-                                 get_entire_boundary_condition, &
-                                 get_boundary_condition_nodes
+get_entire_boundary_condition, &
+get_boundary_condition_nodes
   use field_derivatives, only: grad
 
   implicit none

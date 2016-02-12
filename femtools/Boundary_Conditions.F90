@@ -28,11 +28,13 @@
 module boundary_conditions
   use spud
   use global_parameters, only: OPTION_PATH_LEN
+  use parallel_tools
   use sparse_tools
-  use fields_data_types
+  use fetools, only : INFINITY
   use fields
   use sparse_tools_petsc
   use state_module
+
   implicit none
     
   interface add_boundary_condition

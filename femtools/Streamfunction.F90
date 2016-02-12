@@ -36,6 +36,7 @@ module streamfunction
   use eventcounter
   use transform_elements
   use parallel_fields
+  use fetools, only: dshape_dot_dshape, shape_curl_shape_2d
   use fields
   use state_module
   use sparsity_patterns

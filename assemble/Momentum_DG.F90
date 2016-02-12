@@ -56,8 +56,8 @@ COLOURING_DG0
   use field_derivatives
   use coordinates
   use solvers
-  use dgtools
   use sparsity_patterns
+  use dgtools
   use smoothing_module
   use sparsity_patterns_meshes
   use boundary_conditions_from_options
@@ -67,7 +67,6 @@ COLOURING_DG0
   use slope_limiters_dg
   use colouring
   use multiphase_module
-
 
   implicit none
 

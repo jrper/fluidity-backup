@@ -31,9 +31,11 @@ module sediment
 
   use global_parameters, only:   OPTION_PATH_LEN, dt, timestep
   use fldebug
+  use vector_tools
   use quadrature
   use elements
   use spud
+  use fetools
   use fields
   use state_module
   use boundary_conditions

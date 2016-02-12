@@ -33,6 +33,8 @@ module node_owner_finder
   use data_structures
   use global_parameters, only : real_4, real_8
   use mpi_interfaces
+  use parallel_tools
+  use parallel_fields
   use fields
 
   implicit none

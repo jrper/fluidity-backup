@@ -31,6 +31,7 @@ module rotated_boundary_conditions
 
 use spud
 use global_parameters, only: FIELD_NAME_LEN, OPTION_PATH_LEN
+use parallel_tools
 use fields
 use sparse_tools_petsc
 use state_module

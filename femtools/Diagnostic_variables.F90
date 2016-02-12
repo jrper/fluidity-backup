@@ -29,8 +29,8 @@
 
 module diagnostic_variables
   !!< A module to calculate and output diagnostics. This replaces the .s file.
-  use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN, &
-    & PYTHON_FUNC_LEN, int_16, integer_size, real_size
+ use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN, &
+& PYTHON_FUNC_LEN, int_16, integer_size, real_size
   use quadrature
   use futils
   use elements
@@ -53,7 +53,7 @@ module diagnostic_variables
   use halos_communications
   use halos_numbering
   use halos_ownership
-  use fields_manipulation
+  use parallel_fields, only: element_owned
   use fields
   use profiler
   use state_module

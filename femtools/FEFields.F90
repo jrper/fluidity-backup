@@ -5,9 +5,10 @@ module fefields
   use data_structures
   use element_numbering
   use elements, only: element_type
+  use parallel_tools
   use sparse_tools
   use transform_elements, only: transform_to_physical, element_volume
-  use fetools, only: shape_shape
+  use fetools, only: shape_shape, shape_rhs, shape_vector_rhs
   use fields
   use state_module
   use field_options, only: get_coordinate_field

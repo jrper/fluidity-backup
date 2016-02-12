@@ -42,18 +42,18 @@ COLOURING_DG0
   use shape_functions
   use transform_elements
   use fetools
-  use dgtools
   use fields
   use profiler
   use state_module
+  use boundary_conditions
+  use sparsity_patterns
+  use dgtools
   use vtk_interfaces
   use field_options
   use sparse_matrices_fields
   use fefields
-  use boundary_conditions
   use field_derivatives
   use coordinates
-  use sparsity_patterns
   use sparsity_patterns_meshes
   use petsc_solve_state_module
   use boundary_conditions_from_options
@@ -61,7 +61,6 @@ COLOURING_DG0
   use slope_limiters_dg
   use diagnostic_fields, only: calculate_diagnostic_variable
   use porous_media
-  use colouring
 
   implicit none
 

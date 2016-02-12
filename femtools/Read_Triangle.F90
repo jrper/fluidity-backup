@@ -34,6 +34,7 @@ module read_triangle
   use futils
   use elements
   use spud
+  use parallel_tools
   use fields
   use state_module
 

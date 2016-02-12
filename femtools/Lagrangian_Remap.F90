@@ -2,6 +2,7 @@
 
 module lagrangian_remap
   use sparse_tools
+  use fetools, only: shape_shape
   use fields
   use vtk_interfaces
   use interpolation_module

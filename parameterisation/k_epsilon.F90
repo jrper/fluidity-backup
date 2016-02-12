@@ -37,6 +37,7 @@ module k_epsilon
   use spud
   use fields_manipulation
   use fetools
+  use parallel_fields
   use fields
   use state_module
   use boundary_conditions

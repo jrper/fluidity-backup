@@ -4,6 +4,7 @@ module smoothing_module
   use global_parameters, only : OPTION_PATH_LEN
   use sparse_tools
   use metric_tools
+  use fetools
   use fields
   use state_module
   use sparsity_patterns

@@ -35,6 +35,7 @@ module read_gmsh
   use futils
   use elements
   use spud
+  use parallel_tools
   use fields
   use state_module
   use gmsh_common

@@ -37,6 +37,7 @@ module supermesh_assembly
   use transform_elements
   use supermesh_construction
   use intersection_finder_module
+  use fetools, only: shape_rhs, shape_shape
   use fields
   use state_module
   use solvers

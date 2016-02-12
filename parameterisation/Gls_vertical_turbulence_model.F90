@@ -34,6 +34,7 @@ module gls
   use quadrature
   use elements
   use spud
+  use fetools
   use fields
   use state_module
   use boundary_conditions
