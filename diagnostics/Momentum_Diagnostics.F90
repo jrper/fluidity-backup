@@ -32,6 +32,7 @@ module momentum_diagnostics
   use fldebug
   use global_parameters, only : OPTION_PATH_LEN
   use spud
+  use fetools
   use fields
   use state_module
   use boundary_conditions

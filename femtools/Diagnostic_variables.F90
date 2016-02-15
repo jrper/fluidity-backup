@@ -40,6 +40,7 @@ module diagnostic_variables
   use memory_diagnostics
   use integer_hash_table_module
   use data_structures
+  use linked_lists
   use halo_data_types
   use halos_base
   use halos_debug

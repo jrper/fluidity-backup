@@ -34,7 +34,8 @@ module field_equations_cv
   use cv_faces
   use parallel_tools, only: getprocno
   use transform_elements, only: transform_cvsurf_to_physical, &
-       transform_cvsurf_facet_to_physical
+     transform_cvsurf_facet_to_physical, transform_to_physical
+  use parallel_tools
   use fields
   use sparse_matrices_fields
   use state_module
@@ -46,8 +47,8 @@ module field_equations_cv
   use boundary_conditions
   use halos
   use cv_upwind_values
-  use cv_face_values
-  use fefields, only: compute_cv_mass
+  use cv_face_values, only: evaluate_face_val, theta_val, couple_face_value
+  use fefields, only: compute_cv_mass, get_cv_coordinate_field
   use state_fields_module
   use diagnostic_fields, only: calculate_diagnostic_variable
   use cv_fields

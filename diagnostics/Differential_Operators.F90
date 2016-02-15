@@ -36,6 +36,7 @@ module differential_operator_diagnostics
   use spud
   use sparse_tools
   use eventcounter
+  use fetools
   use fields
   use state_module
   use field_options

@@ -41,6 +41,7 @@ module metric_advection
   use transform_elements
   use fetools
   use unittest_tools
+  use parallel_tools
   use fields
   use state_module
   use vtk_interfaces
@@ -55,7 +56,7 @@ module metric_advection
   use cvtools
   use cv_options
   use cv_upwind_values
-  use cv_face_values
+  use cv_face_values, only: theta_val, evaluate_face_val
   use sparsity_patterns_meshes
   use fefields, only: compute_cv_mass
   use state_fields_module, only: get_cv_mass

@@ -39,6 +39,7 @@ use spud
 use global_parameters, only: OPTION_PATH_LEN
 use sparse_tools
 use fields
+use parallel_fields
 use sparse_tools_petsc
 use state_module
 use solvers

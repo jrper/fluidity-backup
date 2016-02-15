@@ -31,6 +31,7 @@ module pickers_inquire
 
   use fldebug
   use data_structures
+  use parallel_tools
   use detector_data_types
   use picker_data_types
   use pickers_base

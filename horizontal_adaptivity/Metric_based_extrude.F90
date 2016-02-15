@@ -11,6 +11,7 @@ module hadapt_metric_based_extrude
   use sparse_tools
   use metric_tools
   use fields
+  use parallel_fields
   use meshdiagnostics
   use vtk_interfaces
   use halos

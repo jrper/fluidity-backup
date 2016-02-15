@@ -34,6 +34,7 @@ module hybridized_helmholtz
     use global_parameters, only: option_path_len
     use FUtils, only : real_vector, real_matrix
     use vector_tools, only: solve
+    use fetools
     use fields
     use state_module
     use write_state_module

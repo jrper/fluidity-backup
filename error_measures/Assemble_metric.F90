@@ -22,7 +22,7 @@ module metric_assemble
   use boundary_metric
   use geometric_constraints_metric
   use limit_metric_module
-  use metric_advection
+  use metric_advection, only: use_metric_advection, form_advection_metric
   use anisotropic_gradation
   use richardson_metric_module
   use anisotropic_zz_module

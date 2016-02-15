@@ -10,6 +10,7 @@ module solidconfiguration
   use transform_elements
   use fetools, only: X_, Y_, Z_
   use fields
+  use parallel_fields
   use state_module
   use vtk_interfaces, only: vtk_write_fields
   use fefields,only: compute_lumped_mass

@@ -29,6 +29,7 @@ module conservative_interpolation_module
   use vtk_interfaces
   use halos
   use boundary_conditions
+  use state_module
   use interpolation_module
   use sparse_matrices_fields
   use solvers

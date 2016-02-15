@@ -9,6 +9,7 @@ module hadapt_advancing_front
   use linked_lists
   use adjacency_lists
   use parallel_fields
+  use parallel_tools
   use fields
   use meshdiagnostics
   use halos_derivation

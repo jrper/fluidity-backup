@@ -36,6 +36,7 @@
 #ifdef _OPENMP
     use omp_lib
 #endif
+    use integer_set_module
     use sparse_tools
     use vector_tools
     use elements

@@ -30,6 +30,7 @@
 module adapt_state_unittest_module
   
   use eventcounter
+  use parallel_tools
   use fields
   use state_module
   use adapt_integration, adapt_mesh_3d => adapt_mesh

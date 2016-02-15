@@ -39,7 +39,9 @@ module hydrostatic_pressure
   use sparse_tools
   use shape_functions
   use transform_elements
+  use fetools
   use fields
+  use parallel_fields
   use profiler
   use state_module
   use boundary_conditions

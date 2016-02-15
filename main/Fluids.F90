@@ -47,6 +47,7 @@ topology_mesh_name
   use signal_vars
   use fields
   use vtk_interfaces
+  use transform_elements, only: cache_transform_elements, deallocate_transform_cache
   use boundary_conditions
   use halos
   use sediment

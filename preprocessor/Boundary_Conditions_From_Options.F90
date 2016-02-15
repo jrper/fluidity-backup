@@ -55,7 +55,7 @@ module boundary_conditions_from_options
   use pickers_inquire
   use bulk_parameterisations
   use k_epsilon
-  use sediment, only: set_sediment_reentrainmentuse fldebug
+  use sediment, only: set_sediment_reentrainment
 
   implicit none
 

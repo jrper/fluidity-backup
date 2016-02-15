@@ -62,6 +62,11 @@ implicit none
   interface extract_diagonal
      module procedure block_csr_extract_diagonal
   end interface
+
+private
+
+public :: mult, mult_addto, mult_T, mult_T_addto, mult_diag, addto_diag,&
+          extract_diagonal
   
 contains
 

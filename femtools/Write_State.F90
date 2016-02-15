@@ -10,6 +10,7 @@ module write_state_module
   use embed_python
   use spud
   use futils
+  use parallel_tools
   use fields
   use Profiler
   use state_module

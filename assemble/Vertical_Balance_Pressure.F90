@@ -37,7 +37,9 @@ module vertical_balance_pressure
   use spud
   use sparse_tools
   use transform_elements
+  use fetools
   use fields
+  use parallel_fields
   use profiler
   use state_module
   use boundary_conditions

@@ -30,6 +30,7 @@
 module adaptivity_1d
   
   use fldebug
+  use parallel_tools
   use fields
   use hadapt_metric_based_extrude
   use node_locking

@@ -39,6 +39,8 @@ module colouring
        get_csr_sparsity_firstorder
   implicit none
 
+  private
+
   public :: colour_sparsity, verify_colour_sparsity, verify_colour_ispsparsity
   public :: colour_sets, get_mesh_colouring
   
