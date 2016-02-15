@@ -35,6 +35,7 @@ module field_copies_diagnostics
   use fldebug
   use sparse_tools
   use transform_elements
+  use fetools
   use fields
   use state_module
   use field_options

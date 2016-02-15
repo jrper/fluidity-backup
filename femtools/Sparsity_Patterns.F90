@@ -33,6 +33,12 @@ module sparsity_patterns
   use fields_base
   implicit none
 
+  private
+
+  public :: make_sparsity, make_sparsity_transpose, make_sparsity_mult,&
+            make_sparsity_dg_mass, make_sparsity_compactdgdouble,&
+	    make_sparsity_lists, lists2csr_sparsity
+
 contains
 
   function make_sparsity(rowmesh, colmesh, name) result (sparsity)

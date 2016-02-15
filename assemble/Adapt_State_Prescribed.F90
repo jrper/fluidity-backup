@@ -32,6 +32,7 @@ module adapt_state_prescribed_module
   use global_parameters, only : OPTION_PATH_LEN
   use embed_python
   use spud
+  use parallel_tools
   use fields
   use state_module
   use field_options

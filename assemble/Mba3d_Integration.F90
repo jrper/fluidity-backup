@@ -33,6 +33,7 @@ module mba3d_integration
   use quadrature
   use elements
   use spud
+  use parallel_tools
   use fields
   use halos
   use limit_metric_module

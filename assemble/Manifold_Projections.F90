@@ -26,6 +26,7 @@
 !    USA
 #include "fdebug.h"
 module manifold_projections
+  use fetools
   use fields
   use state_module
 

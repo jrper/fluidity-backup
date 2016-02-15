@@ -29,6 +29,11 @@ module interpolation_module
     module procedure cubic_interpolation_cf_scalar, cubic_interpolation_cf_vector
   end interface
 
+  private
+
+  public :: linear_interpolation, quadratic_interpolation, cubic_interpolation,&
+      get_element_mapping 
+
   contains
 
   function get_element_mapping(old_position, new_position, different_domains, only_owned) result(map)

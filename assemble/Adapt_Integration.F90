@@ -34,6 +34,7 @@ module adapt_integration
   use quadrature
   use elements
   use spud
+  use parallel_tools
   use fields
   use vtk_interfaces
   use halos

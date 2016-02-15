@@ -37,7 +37,7 @@ module diagnostic_fields_matrices
   use sparse_tools
   use transform_elements
   use fetools
-  use parallel_fields, only: zero_non_owned
+  use parallel_fields, only: zero_non_owned, element_owned
   use fields
   use sparse_matrices_fields
   use state_module

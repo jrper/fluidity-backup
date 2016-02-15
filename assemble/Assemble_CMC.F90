@@ -33,8 +33,9 @@ module assemble_CMC
   use spud
   use global_parameters, only: OPTION_PATH_LEN
   use sparse_tools
-  use fields_base
   use linked_lists
+  use transform_elements
+  use fetools, only: shape_shape
   use fields
   use sparse_tools_petsc
   use state_module

@@ -36,6 +36,7 @@ module saturation_distribution_search_hookejeeves
   use fldebug
   use global_parameters, only: OPTION_PATH_LEN
   use spud
+  use fetools, only : X_, Y_, Z_
   use fields
   use state_module
   use diagnostic_fields_wrapper_new

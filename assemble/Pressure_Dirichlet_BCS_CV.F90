@@ -43,7 +43,6 @@ module pressure_dirichlet_bcs_cv
   use cvtools
   use cv_options
   use cv_upwind_values
-  use cv_face_values
   use sparsity_patterns_meshes
   use diagnostic_fields, only: calculate_diagnostic_variable
   use cv_fields

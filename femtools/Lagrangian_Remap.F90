@@ -3,8 +3,10 @@
 module lagrangian_remap
   use sparse_tools
   use fetools, only: shape_shape
+  use transform_elements, only: transform_to_physical
   use fields
   use vtk_interfaces
+  use state_module
   use interpolation_module
   use sparse_matrices_fields
   use solvers

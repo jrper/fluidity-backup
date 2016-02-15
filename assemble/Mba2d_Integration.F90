@@ -8,6 +8,7 @@ module mba2d_integration
   use quicksort
   use data_structures
   use metric_tools
+  use parallel_tools
   use fields
   use state_module
   use meshdiagnostics

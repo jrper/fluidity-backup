@@ -39,6 +39,7 @@ module streamfunction
   use fetools, only: dshape_dot_dshape, shape_curl_shape_2d
   use fields
   use state_module
+  use linked_lists
   use sparsity_patterns
   use solvers
   use boundary_conditions
