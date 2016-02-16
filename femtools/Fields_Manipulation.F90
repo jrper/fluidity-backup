@@ -29,6 +29,7 @@ module fields_manipulation
   use vector_tools
   use elements
   use element_set
+  use sparse_tools
   use embed_python
   use data_structures
   use halo_data_types

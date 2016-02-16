@@ -29,6 +29,7 @@
 
 module detector_move_lagrangian
   use spud
+  use fldebug
   use global_parameters, only: OPTION_PATH_LEN
   use integer_hash_table_module
   use halo_data_types

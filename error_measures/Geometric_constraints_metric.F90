@@ -4,6 +4,7 @@ module geometric_constraints_metric
 !!< This module wraps Gerard's geometric constraints
 !!< code and applied it during metric formation.
 
+  use spud
   use parallel_tools
   use metric_tools
   use fields
@@ -14,9 +15,14 @@ module geometric_constraints_metric
   use halos
   use node_boundary
   use form_metric_field
-  use gradation_metric
+!  use gradation_metric
 
   implicit none
+
+  private
+  public :: use_geometric_constraints_metric,&
+            initialise_geometric_constraints_metric,&
+	    form_geometric_constraints_metric
 
   logical :: use_geometric_constraints_metric = .false.
   logical :: geometric_constraints_initialised = .false.

@@ -54,7 +54,7 @@ module momentum_DG
   use halos
   use field_options
   use fefields
-  use boundary_conditions, only: has_boundary_condition
+  use boundary_conditions, only: has_boundary_condition, get_entire_boundary_condition
   use field_derivatives
   use coordinates
   use solvers

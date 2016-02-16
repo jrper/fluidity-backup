@@ -27,7 +27,8 @@
 #include "fdebug.h"
 module boundary_conditions
   use spud
-  use global_parameters, only: OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
+  use futils
   use parallel_tools
   use sparse_tools
   use fetools, only : INFINITY

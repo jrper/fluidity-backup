@@ -32,7 +32,7 @@ module interpolation_module
   private
 
   public :: linear_interpolation, quadratic_interpolation, cubic_interpolation,&
-      get_element_mapping 
+      get_element_mapping, linear_interpolate_states
 
   contains
 

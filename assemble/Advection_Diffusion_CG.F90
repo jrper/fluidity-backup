@@ -34,6 +34,7 @@ module advection_diffusion_cg
   use quadrature
   use elements
   use spud
+  use integer_set_module
 #ifdef _OPENMP
   use omp_lib
 #endif

@@ -32,6 +32,7 @@ module parallel_fields
   
   use mpi_interfaces
   use parallel_tools
+  use elements
   use halo_data_types
   use halos_base
   use fields_data_types

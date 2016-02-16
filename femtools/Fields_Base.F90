@@ -341,6 +341,28 @@ module fields_base
   interface write_minmax
     module procedure write_minmax_scalar, write_minmax_vector, write_minmax_tensor
   end interface
+
+  private
+
+  public :: mesh_dim, mesh_periodic, halo_count, node_val, ele_loc, &
+            node_count, node_ele, element_count, surface_element_count,&
+	    unique_surface_element_count, face_count, surface_element_id,&
+	    ele_region_id, ele_region_ids, mesh_connectivity, mesh_equal,&
+	    mesh_compatible, print_mesh_incompatibility,&
+	    ele_faces, ele_neigh, operator (==), local_coords, eval_field,&
+	    face_eval_field, set_from_python_function, tetvol, face_opposite,&
+	    write_minmax, field_val, element_halo_count, field2file,&
+	    ele_val_at_superconvergent, extract_scalar_field,&
+	    has_discontinuous_internal_boundaries, has_faces,&
+	    element_degree, face_val_at_quad, ele_val_at_quad, face_val,&
+	    ele_val, ele_n_constraints, ele_shape, face_ngi, ele_and_faces_loc,&
+	    face_loc, ele_ngi, face_vertices, ele_vertices, ele_num_type,&
+	    ele_numbering_family, ele_face_count, face_ele, ele_face,&
+	    face_neigh, node_neigh, face_global_nodes, face_local_nodes,&
+	    ele_nodes, ele_count, local_face_number, face_shape, face_n_s,&
+	    face_dn_s, continuity, simplex_volume, ele_div_at_quad,&
+	    extract_scalar_field_from_vector_field, triarea, ele_grad_at_quad,&
+	    extract_scalar_field_from_tensor_field
     
 contains
 

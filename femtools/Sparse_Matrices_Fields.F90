@@ -27,6 +27,7 @@
 #include "fdebug.h"
 module sparse_matrices_fields
 use iso_c_binding
+use fldebug
 use sparse_tools
 use fields
 use sparse_tools_petsc
@@ -66,7 +67,7 @@ implicit none
 private
 
 public :: mult, mult_addto, mult_T, mult_T_addto, mult_diag, addto_diag,&
-          extract_diagonal
+          extract_diagonal, mult_div_tensorinvscalar_div_t
   
 contains
 
