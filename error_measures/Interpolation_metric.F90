@@ -9,6 +9,7 @@ module interpolation_metric
 
   use spud
   use metric_tools
+  use fields
   use parallel_fields
   use state_module
   use vtk_interfaces
@@ -25,6 +26,10 @@ module interpolation_metric
   implicit none
 
   logical :: use_interpolation_metric
+
+  private
+  public :: use_interpolation_metric, initialise_interpolation_metric,&
+            form_interpolation_metric
 
   contains
 

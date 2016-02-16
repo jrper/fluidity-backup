@@ -12,8 +12,8 @@ module anisotropic_gradation
   use state_module
   use initialise_fields_module
   use merge_tensors
-  use gradation_metric
-  use form_metric_field
+!  use gradation_metric, only: 
+  use form_metric_field, only: bound_metric
 
   implicit none
 

@@ -6,17 +6,18 @@ module anisotropic_zz_module
 ! If you understand the algorithm, the code is trivial,
 ! but not vice versa!
 
+  use spud  
   use global_parameters
   use quicksort
   use sparse_tools
   use vector_tools
   use tensors
+  use unittest_tools, only: get_mat_diag, is_nan
   use adjacency_lists
   use transform_elements
   use fetools
   use metric_tools
   use fields
-  use state_module
   use state_module
   use field_options
   use meshdiagnostics
@@ -28,9 +29,9 @@ module anisotropic_zz_module
   use conformity_measurement
   use sparsity_patterns
   use diagnostic_fields
-  use edge_length_module
-  use bounding_box_metric
-  use form_metric_field
+!  use edge_length_module
+!  use bounding_box_metric
+!  use form_metric_field
   
   implicit none
 

@@ -5,6 +5,7 @@ module metric_assemble
   use spud
   use parallel_tools
   use metric_tools
+  use fields
   use state_module
   use vtk_interfaces
   use merge_tensors
@@ -16,13 +17,13 @@ module metric_assemble
   use aspect_ratios_module
   use interpolation_metric
   use goals
-  use gradation_metric
+  use gradation_metric, only: use_gradation_metric
   use goal_metric
   use bounding_box_metric
   use boundary_metric
   use geometric_constraints_metric
   use limit_metric_module
-  use metric_advection, only: use_metric_advection, form_advection_metric
+  use metric_advection
   use anisotropic_gradation
   use richardson_metric_module
   use anisotropic_zz_module

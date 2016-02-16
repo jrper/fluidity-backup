@@ -34,14 +34,13 @@ module metric_advection
   use futils, only: int2str
   use elements
   use spud
-  use parallel_tools, only: getprocno
+  use parallel_tools
   use sparse_tools
   use shape_functions
   use cv_faces
   use transform_elements
   use fetools
   use unittest_tools
-  use parallel_tools
   use fields
   use state_module
   use vtk_interfaces

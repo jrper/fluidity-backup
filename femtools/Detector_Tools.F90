@@ -30,6 +30,7 @@
 module detector_tools
   use spud
   use fldebug
+  use elements, only: local_coord_count
   use detector_data_types
   use integer_hash_table_module
   use fields

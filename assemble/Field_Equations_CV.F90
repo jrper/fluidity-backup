@@ -32,10 +32,9 @@ module field_equations_cv
  use spud
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use cv_faces
-  use parallel_tools, only: getprocno
+  use parallel_tools
   use transform_elements, only: transform_cvsurf_to_physical, &
      transform_cvsurf_facet_to_physical, transform_to_physical
-  use parallel_tools
   use fields
   use sparse_matrices_fields
   use state_module

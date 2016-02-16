@@ -18,6 +18,7 @@ module pseudo_supermesh
   use fields
   use vtk_interfaces
   use merge_tensors
+  use state_module
   use interpolation_module
   use edge_length_module
   use limit_metric_module

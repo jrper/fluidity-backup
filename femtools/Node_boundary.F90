@@ -6,6 +6,7 @@ module node_boundary
 
   use linked_lists
   use eventcounter
+  use elements
   use fields
   use surfacelabels
 

@@ -34,6 +34,7 @@ module transform_elements
   use elements
   use parallel_tools, only: abort_if_in_parallel_region
   use memory_diagnostics
+  use fields_data_types
   use fields_base
   use cv_faces, only: cv_faces_type
   use eventcounter

@@ -14,21 +14,23 @@ module solenoidal_interpolation_module
   use supermesh_construction
   use fetools
   use fields
+  use field_options, only : complete_field_path
   use sparsity_patterns
   use boundary_conditions
   use state_module
   use interpolation_module
-!  use sparse_matrices_fields
-!  use solvers
-!  use fefields
-!  use dgtools
+  use linked_lists
+  use sparse_matrices_fields
+  use solvers
+  use fefields
+  use dgtools
   use assemble_cmc, only: assemble_cmc_dg, repair_stiff_nodes,&
      zero_stiff_nodes, assemble_masslumped_cmc 
-!  use boundary_conditions_from_options
-!  use divergence_matrix_cv, only: assemble_divergence_matrix_cv
-!  use divergence_matrix_cg, only: assemble_divergence_matrix_cg
-!  use momentum_cg, only: correct_masslumped_velocity, add_kmk_matrix, add_kmk_rhs, assemble_kmk_matrix
-!  use momentum_dg, only: correct_velocity_dg
+  use boundary_conditions_from_options
+  use divergence_matrix_cv, only: assemble_divergence_matrix_cv
+  use divergence_matrix_cg, only: assemble_divergence_matrix_cg
+  use momentum_cg, only: correct_masslumped_velocity, add_kmk_matrix, add_kmk_rhs, assemble_kmk_matrix
+  use momentum_dg, only: correct_velocity_dg
   implicit none
 
   private

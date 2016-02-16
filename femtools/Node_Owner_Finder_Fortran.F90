@@ -30,6 +30,7 @@
 module node_owner_finder
 
   use fldebug
+  use futils, only: present_and_false
   use data_structures
   use global_parameters, only : real_4, real_8
   use mpi_interfaces

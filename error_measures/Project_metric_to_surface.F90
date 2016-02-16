@@ -19,6 +19,7 @@ module project_metric_to_surface_module
 
   implicit none
 
+  private
   public :: project_metric_to_surface, vertically_align_metric, incorporate_bathymetric_metric
   contains
 

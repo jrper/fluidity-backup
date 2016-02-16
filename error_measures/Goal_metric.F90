@@ -6,6 +6,7 @@ module goal_metric
 
   use global_parameters, only: dt, FIELD_NAME_LEN, OPTION_PATH_LEN
   use futils, only: count_chars, multiindex
+  use vector_tools
   use elements
   use spud
   use transform_elements, only: transform_to_physical
