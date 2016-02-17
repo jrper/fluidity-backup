@@ -2,7 +2,7 @@
 #include "fdebug.h"
 module ale_module
   use fldebug
-  use global_parameters, only: OPTION_PATH_LEN, dt
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN, dt
   use quadrature
   use elements
   use spud

@@ -4,7 +4,8 @@
 module zoltan_integration
 
 #ifdef HAVE_ZOLTAN
-  use global_parameters, only: real_size, OPTION_PATH_LEN, topology_mesh_name
+  use global_parameters, only: real_size, OPTION_PATH_LEN, topology_mesh_name,&
+      FIELD_NAME_LEN
   use quadrature
   use elements
   use mpi_interfaces

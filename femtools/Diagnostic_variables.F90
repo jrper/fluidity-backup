@@ -50,6 +50,7 @@ module diagnostic_variables
   use fields_base
   use eventcounter
   use fetools
+  use embed_python
   use unittest_tools
   use halos_communications
   use halos_numbering

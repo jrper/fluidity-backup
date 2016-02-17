@@ -25,6 +25,7 @@ module python_state
   use fldebug
   use global_parameters, only:FIELD_NAME_LEN, current_debug_level, OPTION_PATH_LEN, PYTHON_FUNC_LEN
   use quadrature
+  use sparse_tools
   use elements
   use fields
   use state_module 

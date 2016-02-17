@@ -27,10 +27,11 @@
 #include "fdebug.h"
 
 module divergence_matrix_cv
-  use global_parameters, only: OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use quadrature
   use futils
   use spud
+  use sparse_tools
   use cv_faces
   use fetools
   use fields

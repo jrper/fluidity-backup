@@ -30,9 +30,10 @@ module boundary_conditions_from_options
 
   use fldebug
   use global_parameters, only: OPTION_PATH_LEN, PYTHON_FUNC_LEN, pi,&
-       current_debug_level
+       current_debug_level, FIELD_NAME_LEN
   use vector_tools
   use quadrature
+  use sparse_tools
   use elements
   use spud
   use integer_set_module
@@ -54,7 +55,7 @@ module boundary_conditions_from_options
   use synthetic_bc
   use pickers_inquire
   use bulk_parameterisations
-  use k_epsilon
+  use k_epsilon, only: keps_bcs
   use sediment, only: set_sediment_reentrainment
 
   implicit none

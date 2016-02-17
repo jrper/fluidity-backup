@@ -4,8 +4,8 @@
 module zoltan_detectors
 
 #ifdef HAVE_ZOLTAN
-
   use zoltan, only: zoltan_int
+  use fldebug
   use data_structures, only: has_key, fetch
   use detector_data_types
   use parallel_tools

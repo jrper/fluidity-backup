@@ -4,6 +4,7 @@ module reference_meshes
   
   use fldebug
   use global_parameters, only : OPTION_PATH_LEN
+  use futils, only: int2str
   use spud
   use fields
   use field_options, only: get_coordinate_field

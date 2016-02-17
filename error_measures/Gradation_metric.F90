@@ -10,6 +10,7 @@ module gradation_metric
 !!< 13th International Meshing Roundtable, 2004
 
   use spud
+  use vector_tools
   use unittest_tools
   use adjacency_lists
   use linked_lists

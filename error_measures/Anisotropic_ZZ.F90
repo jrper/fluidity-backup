@@ -29,9 +29,9 @@ module anisotropic_zz_module
   use conformity_measurement
   use sparsity_patterns
   use diagnostic_fields
-!  use edge_length_module
-!  use bounding_box_metric
-!  use form_metric_field
+  use edge_length_module
+  use bounding_box_metric
+  use form_metric_field
   
   implicit none
 

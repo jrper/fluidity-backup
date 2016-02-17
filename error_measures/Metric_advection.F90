@@ -30,7 +30,7 @@ module metric_advection
 
   use fldebug
   use vector_tools
-  use global_parameters, only: OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use futils, only: int2str
   use elements
   use spud

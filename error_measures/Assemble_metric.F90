@@ -17,7 +17,7 @@ module metric_assemble
   use aspect_ratios_module
   use interpolation_metric
   use goals
-  use gradation_metric, only: use_gradation_metric
+  use gradation_metric, only: initialise_gradation_metric, use_gradation_metric
   use goal_metric
   use bounding_box_metric
   use boundary_metric
@@ -27,7 +27,9 @@ module metric_assemble
   use anisotropic_gradation
   use richardson_metric_module
   use anisotropic_zz_module
+  use project_metric_to_surface_module, only: project_metric_to_surface
   use reference_meshes
+  use hadapt_advancing_front, only: create_columns_sparsity
   use hadapt_metric_based_extrude, only: get_1d_mesh, recombine_metric, get_1d_tensor
   
   implicit none

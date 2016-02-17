@@ -32,6 +32,8 @@ module field_equations_cv
   use spud
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use cv_faces
+  use sparse_tools
+  use elements
   use parallel_tools
   use transform_elements, only: transform_cvsurf_to_physical, &
      transform_cvsurf_facet_to_physical, transform_to_physical

@@ -2,6 +2,7 @@
 #include "fdebug.h"
 module load_netcdf_module
 
+use fldebug
 use global_parameters
 use spud
 use fields

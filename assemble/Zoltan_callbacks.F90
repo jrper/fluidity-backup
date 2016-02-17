@@ -6,12 +6,16 @@ module zoltan_callbacks
 #ifdef HAVE_ZOLTAN
 
   use zoltan
+  use spud
   use global_parameters, only: real_size, OPTION_PATH_LEN
+  use fldebug
   use data_structures
   use mpi_interfaces
   use parallel_tools, only: getrank, getnprocs, getprocno, MPI_COMM_FEMTOOLS
-  use sparse_tools, only: row_length
+  use sparse_tools 
+  use elements
   use metric_tools
+  use fields
   use state_module
   use halos_derivation, only: ele_owner
   use halos, only: halo_nowned_nodes, halo_node_owner, halo_node_owners, get_owned_nodes, halo_universal_number

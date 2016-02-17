@@ -57,20 +57,20 @@
     use smoothing_module
     use fefields
     use state_fields_module, only: get_lumped_mass
- !   use field_derivatives
+    use field_derivatives
     use coordinates, only: radial_inward_normal_at_quad_face,&
          rotate_diagonal_to_sphere_face, radial_inward_normal_at_quad_ele,&
 	 rotate_diagonal_to_sphere_gi
-!    use boundary_conditions_from_options
+    use boundary_conditions_from_options
     use petsc_solve_state_module, only: petsc_solve
     use coriolis_module, only: coriolis
-    use upwind_stabilisation, only: make_supg_element, supg_test_function, element_upwind_stabilisation
-    use les_module, only: les_viscosity_strength, wale_viscosity_strength, les_strain_rate
-!    use multiphase_module
+    use upwind_stabilisation, only: make_supg_element, supg_test_function, element_upwind_stabilisation, get_upwind_options
+    use les_module
+    use multiphase_module
     use state_matrices_module, only: get_pressure_stabilisation_matrix
-!    use rotated_boundary_conditions
-!    use edge_length_module
-!    use colouring
+    use rotated_boundary_conditions
+    use edge_length_module
+    use colouring
 
     implicit none
 

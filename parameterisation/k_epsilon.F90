@@ -33,6 +33,7 @@ module k_epsilon
   use fldebug
   use vector_tools
   use quadrature
+  use sparse_tools
   use elements
   use spud
   use fields_manipulation

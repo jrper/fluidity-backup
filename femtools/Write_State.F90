@@ -6,7 +6,7 @@ module write_state_module
   !!< Data output routines
   
   use FLDebug
-  use global_parameters, only: OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use embed_python
   use spud
   use futils

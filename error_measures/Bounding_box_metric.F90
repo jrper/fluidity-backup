@@ -8,6 +8,7 @@ module bounding_box_metric
 !!< doesn't like it, otherwise.
 
   use spud
+  use fldebug
   use global_parameters, only: domain_bbox
   use unittest_tools
   use metric_tools

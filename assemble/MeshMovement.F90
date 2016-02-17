@@ -120,7 +120,7 @@ contains
    
     mesh = extract_mesh(state, "CoordinateMesh")
     ewrite(3,*) "coordinate mesh extracted "
-    mdim=mesh_dim_mesh(mesh)
+    mdim=mesh_dim(mesh)
 
     allocate(F1weight(mdim))
     allocate(F2weight(mdim))
@@ -266,7 +266,7 @@ contains
              ewrite(3,*) "No grid movement in Z "
           endif
 
-          if (lagrangian_multi>=mesh_dim_mesh(mesh)) then 
+          if (lagrangian_multi>=mesh_dim(mesh)) then 
              ewrite(0,*) "The grid is blocked in all direction!"
              ewrite(0,*) "Do you know what you're doing?"
           endif
@@ -313,12 +313,12 @@ contains
     ewrite(3,*) " size of grid velocity field",node_count(gridvelocity)
     ewrite(3,*) " size of temperature field",node_count(ifield)
 
-    cdim=2*mesh_dim_mesh(mesh)-1
+    cdim=2*mesh_dim(mesh)-1
 
     call field_stats(gridvelocity,positions, mini, maxi, l2norm2)
     ewrite(3,*) "##grid_vel at the start of routine :mini, max,norm2 ",mini, maxi,l2norm2
 
-    cdim=mesh_dim_mesh(mesh)+lagrangian_multi
+    cdim=mesh_dim(mesh)+lagrangian_multi
 
     ewrite(3,*) "we're gonna solve a system of dimension: ", cdim
     !if blcok5x5 was a block matrix...
