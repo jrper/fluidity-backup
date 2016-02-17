@@ -36,12 +36,11 @@ module sediment_diagnostics
   use spud
   use sparse_tools
   use fetools
-  use fetools
   use fields
   use state_module
   use fefields
   use boundary_conditions
-  use sediment
+  use sediment, only: get_n_sediment_fields, get_sediment_item
 
   implicit none
   

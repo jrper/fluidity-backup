@@ -52,7 +52,9 @@ module metric_tools
 	    get_matrix_identity, have_adapt_opt, simplex_tensor,&
 	    metric_from_edge_lengths, edge_lengths_From_metric,&
 	    apply_transform, absolutify_tensor, domain_length_scale,&
-	    get_angle, error_bound_name, project_to_subspace
+	    get_angle, error_bound_name, project_to_subspace,&
+	    element_quality_p0, check_perm,&
+	    form_anisotropic_metric_from_isotropic_metric
 
   contains
 

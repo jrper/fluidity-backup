@@ -30,8 +30,11 @@
 module interpolation_manager
 
   use spud
-  use global_parameters, only : OPTION_PATH_LEN, periodic_boundary_option_path
+  use global_parameters, only : OPTION_PATH_LEN, periodic_boundary_option_path,&
+      FIELD_NAME_LEN
+  use futils, only: int2str
   use linked_lists
+  use elements
   use supermesh_construction
   use intersection_finder_module
   use fields

@@ -35,6 +35,7 @@ module shallow_water_equations
   use global_parameters, only: OPTION_PATH_LEN
   use spud
   use transform_elements
+  use sparse_tools
   use fields
   use fetools
   use state_module

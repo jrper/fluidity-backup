@@ -33,7 +33,8 @@ module hybridized_helmholtz
     use FLDebug
     use global_parameters, only: option_path_len
     use FUtils, only : real_vector, real_matrix
-    use vector_tools, only: solve
+    use vector_tools, only: solve, cross_product
+    use sparse_tools
     use fetools
     use fields
     use state_module
@@ -43,10 +44,9 @@ module hybridized_helmholtz
     use solvers
     use diagnostic_variables
     use populate_state_module
-    use populate_state_module
     use timeloop_utilities
     use assemble_cmc
-    use diagnostic_fields_wrapper
+!    use diagnostic_fields_wrapper
     use manifold_projections
     implicit none
 

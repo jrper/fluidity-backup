@@ -2,6 +2,7 @@
 
 module interpolation_error
 
+  use elements
   use transform_elements, only: transform_to_physical
   use fields
   use vtk_interfaces, only: vtk_write_fields

@@ -27,6 +27,7 @@
 #include "fdebug.h"
 module fields_halos
 !!< This module contains code that depends on both fields and halos
+use fldebug
 use data_structures
 use parallel_tools
 use fields

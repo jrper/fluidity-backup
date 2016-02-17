@@ -29,7 +29,7 @@
   
 module sediment
 
-  use global_parameters, only:   OPTION_PATH_LEN, dt, timestep
+  use global_parameters, only:   OPTION_PATH_LEN, FIELD_NAME_LEN, dt, timestep
   use fldebug
   use vector_tools
   use quadrature
@@ -45,10 +45,9 @@ module sediment
 
   implicit none
 
+  private 
   public set_sediment_reentrainment, sediment_check_options, get_n_sediment_fields, &
        & get_sediment_item, surface_horizontal_divergence
-
-  private 
 
   interface get_sediment_item
      module procedure get_sediment_field, get_sediment_field_name,&

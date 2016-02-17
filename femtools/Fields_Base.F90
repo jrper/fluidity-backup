@@ -362,7 +362,9 @@ module fields_base
 	    ele_nodes, ele_count, local_face_number, face_shape, face_n_s,&
 	    face_dn_s, continuity, simplex_volume, ele_div_at_quad,&
 	    extract_scalar_field_from_vector_field, triarea, ele_grad_at_quad,&
-	    extract_scalar_field_from_tensor_field
+	    extract_scalar_field_from_tensor_field, ele_curl_at_quad,&
+	    eval_shape, ele_jacobian_at_quad, ele_div_at_quad_tensor,&
+	    ele_2d_curl_at_quad, getsndgln, local_coords_matrix
     
 contains
 

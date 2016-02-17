@@ -29,7 +29,7 @@ module cv_upwind_values
   !!< Module containing general tools for discretising Control Volume problems.
   use fldebug
   use vector_tools, only: norm2, cross_product, scalar_triple_product
-  use global_parameters, only: OPTION_PATH_LEN
+  use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use quadrature
   use elements
   use spud

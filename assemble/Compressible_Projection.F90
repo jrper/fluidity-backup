@@ -31,6 +31,7 @@ module compressible_projection
   use spud
   use global_parameters, only: OPTION_PATH_LEN
   use sparse_tools
+  use elements
   use transform_elements
   use fields
   use state_module

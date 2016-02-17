@@ -30,6 +30,7 @@
 module field_priority_lists
 
   use global_parameters, only: FIELD_NAME_LEN, OPTION_PATH_LEN
+  use futils, only: int2str
   use spud
   use fields
   use state_module

@@ -35,6 +35,7 @@ module streamfunction
   use vector_tools
   use eventcounter
   use transform_elements
+  use elements
   use parallel_fields
   use fetools, only: dshape_dot_dshape, shape_curl_shape_2d
   use fields

@@ -33,6 +33,7 @@ module field_copies_diagnostics
   use global_parameters, only : OPTION_PATH_LEN
   use spud
   use fldebug
+  use vector_tools, only: solve
   use sparse_tools
   use transform_elements
   use fetools

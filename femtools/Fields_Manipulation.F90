@@ -29,8 +29,6 @@ module fields_manipulation
   use vector_tools
   use elements
   use element_set
-  use sparse_tools
-  use embed_python
   use data_structures
   use halo_data_types
   use quicksort
@@ -39,6 +37,8 @@ module fields_manipulation
   use halos_debug
   use memory_diagnostics
   use halos_allocates
+  use sparse_tools
+  use embed_python
   use fields_data_types
   use fields_base
   use halos_numbering

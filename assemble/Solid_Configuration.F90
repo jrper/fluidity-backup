@@ -5,6 +5,7 @@ module solidconfiguration
   use fldebug
   use spud
   use global_parameters, only: OPTION_PATH_LEN, dt, current_time
+  use futils, only: free_unit
   use parallel_tools
   use vector_tools, only: det
   use transform_elements

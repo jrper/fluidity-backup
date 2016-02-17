@@ -29,6 +29,7 @@
 
 module adapt_state_unittest_module
   
+  use global_parameters, only: FIELD_NAME_LEN
   use eventcounter
   use parallel_tools
   use fields

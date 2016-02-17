@@ -30,7 +30,7 @@
 module surface_integrals
 
   use fldebug
-  use global_parameters, only : OPTION_PATH_LEN
+  use global_parameters, only : OPTION_PATH_LEN, FIELD_NAME_LEN
   use spud
   use quadrature
   use elements

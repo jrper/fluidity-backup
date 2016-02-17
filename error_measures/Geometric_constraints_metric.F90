@@ -15,7 +15,7 @@ module geometric_constraints_metric
   use halos
   use node_boundary
   use form_metric_field
-!  use gradation_metric
+  use gradation_metric
 
   implicit none
 

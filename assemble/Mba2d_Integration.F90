@@ -1,11 +1,13 @@
 #include "fdebug.h"
 
 module mba2d_integration
+  use spud
   use global_parameters, only : current_debug_level
   use quadrature
   use elements
   use eventcounter
   use quicksort
+  use sparse_tools
   use data_structures
   use metric_tools
   use parallel_tools

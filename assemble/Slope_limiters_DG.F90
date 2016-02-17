@@ -30,6 +30,7 @@ module slope_limiters_dg
 use fldebug_parameters
 use ieee_arithmetic
 use spud
+use vector_tools, only: solve
 use elements
 use eventcounter
 use transform_elements

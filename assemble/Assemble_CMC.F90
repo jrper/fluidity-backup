@@ -36,6 +36,7 @@ module assemble_CMC
   use linked_lists
   use transform_elements
   use fetools, only: shape_shape
+  use elements
   use fields
   use sparse_tools_petsc
   use state_module
