@@ -30,6 +30,7 @@
 module supermesh_assembly
 
   use fldebug
+  use vector_tools, only: solve
   use quadrature
   use elements
   use sparse_tools
