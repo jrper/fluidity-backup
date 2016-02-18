@@ -30,6 +30,7 @@
 subroutine probe_vtu(vtu_filename_, vtu_filename_len, fieldname_, &
     & fieldname_len, x, y, z, dim) bind(c)
 
+  use elements, only: FAMILY_SIMPLEX
   use fields
   use fldebug
   use futils
