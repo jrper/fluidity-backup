@@ -112,9 +112,11 @@
   subroutine run_model(state,vl_as,vl_as_wsor,vl,no_vl,sor)
     use global_parameters, only: PYTHON_FUNC_LEN
     use unittest_tools
+    use sparse_tools
     use solvers
     use boundary_conditions
     use fields
+    use fetools
     use state_module
     use elements
     use sparse_tools_petsc
@@ -241,6 +243,7 @@
   subroutine get_laplacian(A,positions,psi)
     use sparse_tools
     use fields
+    use fetools
     implicit none
     type(csr_matrix), intent(inout) :: A
     type(vector_field), intent(in) :: positions
@@ -259,6 +262,8 @@
     use unittest_tools
     use solvers
     use fields
+    use fetools
+    use transform_elements
     use state_module
     use elements
     use sparse_tools

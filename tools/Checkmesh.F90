@@ -10,6 +10,8 @@ subroutine checkmesh(filename_, filename_len) bind(c)
   use fields
   use state_module
 !
+  use parallel_tools
+  use parallel_fields
   use halos
   use intersection_finder_module
   use linked_lists
