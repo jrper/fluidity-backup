@@ -29,6 +29,9 @@
 
 subroutine test_supermesh_shapes_aa
 
+  use fetools
+  use elements
+  use transform_elements
   use fields
   use fldebug
   use supermesh_assembly

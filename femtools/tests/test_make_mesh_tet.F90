@@ -29,6 +29,7 @@
 
 subroutine test_make_mesh_tet
 
+  use elements
   use fields
   use fldebug
   use mesh_files
