@@ -27,6 +27,8 @@
 #include "fdebug.h"
   
   subroutine test_colouring
+  use sparse_tools
+  use fields_data_types
   use fields_manipulation
   use state_module
   use vtk_interfaces

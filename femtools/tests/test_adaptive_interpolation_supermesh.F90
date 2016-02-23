@@ -1,6 +1,7 @@
 subroutine test_adaptive_interpolation_supermesh
 
   use quadrature
+  use elements
   use fields
   use adaptive_interpolation_module
   use mesh_files

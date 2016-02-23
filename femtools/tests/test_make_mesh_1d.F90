@@ -29,6 +29,8 @@
 
 subroutine test_make_mesh_1d
 
+  use futils
+  use elements
   use fields
   use fldebug
   use mesh_files
