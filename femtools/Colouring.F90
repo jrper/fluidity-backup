@@ -42,7 +42,7 @@ module colouring
   private
 
   public :: colour_sparsity, verify_colour_sparsity, verify_colour_ispsparsity
-  public :: colour_sets, get_mesh_colouring
+  public :: colour_sets, get_mesh_colouring,  mat_sparsity_to_isp_sparsity
   
 contains
   
