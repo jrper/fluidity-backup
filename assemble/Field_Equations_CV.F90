@@ -49,7 +49,7 @@ module field_equations_cv
   use halos
   use cv_upwind_values
   use cv_face_values, only: evaluate_face_val, theta_val, couple_face_value
-  use fefields, only: compute_cv_mass, get_cv_coordinate_field
+  use fefields, only: compute_cv_mass
   use state_fields_module
   use diagnostic_fields, only: calculate_diagnostic_variable
   use cv_fields
