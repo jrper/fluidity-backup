@@ -1815,7 +1815,7 @@ contains
          if (ele<0) then
              FLExit("Turbine error: The point defined in "//trim(turbine_path)//"/free_surface_point_"//int2str(j)//" is not located in a mesh element")
          end if
-         fs_val(j) = eval_field_scalar(ele, fs_field, local_coord)
+         fs_val(j) = eval_field(ele, fs_field, local_coord)
        end do
        ! Function head -> outflow
        call get_option(trim(turbine_path)//"/dirichlet/head_flux", func)

@@ -487,7 +487,7 @@ contains
 
   subroutine diagnostic_body_drag(state, force, surface_integral_name, pressure_force, viscous_force)
     type(state_type), intent(in) :: state
-    real, dimension(:), intent(out) :: force
+    real, dimension(:) :: force
     character(len = FIELD_NAME_LEN), intent(in) :: surface_integral_name
     real, dimension(size(force)), optional, intent(out) :: pressure_force
     real, dimension(size(force)), optional, intent(out) :: viscous_force
