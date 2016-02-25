@@ -31,6 +31,7 @@ module sediment
 
   use global_parameters, only:   OPTION_PATH_LEN, FIELD_NAME_LEN, dt, timestep
   use fldebug
+  use futils, only: int2str
   use vector_tools
   use quadrature
   use elements

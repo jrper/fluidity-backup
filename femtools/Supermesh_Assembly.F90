@@ -31,7 +31,9 @@ module supermesh_assembly
 
   use fldebug
   use vector_tools, only: solve
+  use futils, only: present_and_true, present_and_false, int2str
   use quadrature
+  use element_numbering
   use elements
   use sparse_tools
   use linked_lists
@@ -479,7 +481,7 @@ contains
          &dimension = dim - 1, degree = degree)
     ! Note that the extruded surface mesh shape function takes its number of
     ! quadrature points from the volume shape function
-    call allocate_element(shape_surf_ext, ele_num=ele_num, ngi = ngi)
+    call allocate(shape_surf_ext, ele_num=ele_num, ngi = ngi)
     shape_surf_ext%degree = degree
     shape_surf_ext%numbering => find_element_numbering(vertices = loc, dimension = dim - 1, degree = degree)
     shape_surf_ext%quadrature = quad

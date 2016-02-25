@@ -32,7 +32,9 @@ module surface_integrals
   use fldebug
   use global_parameters, only : OPTION_PATH_LEN, FIELD_NAME_LEN
   use spud
+  use futils
   use quadrature
+  use element_numbering, only: FAMILY_SIMPLEX
   use elements
   use parallel_tools
   use parallel_fields

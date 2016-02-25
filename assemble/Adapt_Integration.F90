@@ -30,6 +30,7 @@
 module adapt_integration
 
   use fldebug
+  use futils, only: present_and_true
   use data_structures
   use quadrature
   use elements

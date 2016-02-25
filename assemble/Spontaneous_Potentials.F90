@@ -35,6 +35,7 @@ module spontaneous_potentials
 
   use fldebug
   use spud
+  use futils, only: int2str
   use sparse_tools
   use fields
   use fetools

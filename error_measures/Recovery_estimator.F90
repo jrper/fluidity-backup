@@ -15,6 +15,10 @@ module recovery_estimator
   use field_derivatives, only: grad
   implicit none
 
+  private
+
+  public :: form_recovery_estimator
+
   contains
 
   subroutine form_recovery_estimator(infield, positions, estimator)

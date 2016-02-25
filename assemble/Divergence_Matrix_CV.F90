@@ -27,6 +27,7 @@
 #include "fdebug.h"
 
 module divergence_matrix_cv
+  use fldebug
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use quadrature
   use futils

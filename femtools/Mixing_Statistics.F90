@@ -29,9 +29,11 @@
 
 module mixing_statistics
 
+  use fldebug
   use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN
   use futils
   use vector_tools
+  use element_numbering
   use elements
   use embed_python
   use spud

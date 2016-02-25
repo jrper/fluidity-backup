@@ -5,6 +5,7 @@ module geometric_constraints_metric
 !!< code and applied it during metric formation.
 
   use spud
+  use fldebug
   use parallel_tools
   use metric_tools
   use fields
@@ -13,6 +14,7 @@ module geometric_constraints_metric
   use merge_tensors
   use edge_length_module
   use halos
+  use surfacelabels, only: FindGeometryConstraints
   use node_boundary
   use form_metric_field
   use gradation_metric

@@ -11,6 +11,10 @@ use Field_Options
 
 implicit none
 
+private
+
+public :: set_scalar_field_from_netcdf
+
 logical :: on_sphere
 
 contains

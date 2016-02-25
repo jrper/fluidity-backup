@@ -15,6 +15,10 @@ module mba_adapt_module
 #endif
   implicit none
 
+  private
+
+  public :: mba_adapt, CrvFunction_ani, snap_positions, face_basis
+
   contains
 
   subroutine mba_adapt(state, metric)

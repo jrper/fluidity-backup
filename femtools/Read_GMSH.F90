@@ -31,8 +31,10 @@ module read_gmsh
   ! This module reads GMSH files and results in a vector field of
   ! positions.
 
+  use fldebug
   use global_parameters, only : OPTION_PATH_LEN
   use futils
+  use quadrature
   use elements
   use spud
   use parallel_tools

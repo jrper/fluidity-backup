@@ -27,7 +27,9 @@
 #include "fdebug.h"
 module fields_calculations
 
+use fldebug
 use vector_tools
+use quadrature
 use elements
 use parallel_tools
 use fields_data_types

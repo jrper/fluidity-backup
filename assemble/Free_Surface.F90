@@ -27,9 +27,11 @@
 #include "fdebug.h"
 
 module free_surface_module
+use fldebug
 use integer_set_module
 use data_structures
 use spud
+use futils, only: int2str, present_and_true
 use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
 use parallel_tools
 use parallel_fields

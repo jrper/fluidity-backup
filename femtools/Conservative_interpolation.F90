@@ -9,6 +9,7 @@ module conservative_interpolation_module
   use global_parameters, only : FIELD_NAME_LEN, OPTION_PATH_LEN
   use quadrature
   use futils
+  use element_numbering, only: FAMILY_SIMPLEX
   use elements
   use spud
   use data_structures
@@ -24,6 +25,8 @@ module conservative_interpolation_module
   use fetools
   use intersection_finder_module
   use fields
+  use parallel_fields, only: node_owned
+  use field_options, only: complete_field_path
   use meshdiagnostics
   use sparsity_patterns
   use vtk_interfaces

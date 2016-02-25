@@ -48,6 +48,8 @@ module vertical_balance_pressure
   use state_matrices_module
   implicit none
 
+  private
+
   public calculate_vertical_balance_pressure, &
   & subtract_vertical_balance_pressure_gradient
 

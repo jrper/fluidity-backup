@@ -4,6 +4,7 @@
 module goal_metric
 !!< Simple goal-based metric formation.
 
+  use fldebug
   use global_parameters, only: dt, FIELD_NAME_LEN, OPTION_PATH_LEN
   use futils, only: count_chars, multiindex
   use vector_tools
@@ -43,6 +44,11 @@ module goal_metric
   interface form_goal_metric
     module procedure form_goal_metric_generic, form_goal_metric_specific
   end interface
+
+  private
+
+  public :: initialise_goal_metric, form_goal_metric, use_goal_metric,&
+       form_goal_metric_generic
 
   contains
 

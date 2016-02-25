@@ -4,12 +4,14 @@
 
 module solenoidal_interpolation_module
 
+  use fldebug
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use futils
   use spud
   use sparse_tools
   use vector_tools
   use tensors
+  use element_numbering, only: FAMILY_SIMPLEX
   use transform_elements
   use supermesh_construction
   use fetools

@@ -29,6 +29,8 @@
 
 module streamfunction
   use spud
+  use fldebug
+  use futils, only: present_and_nonzero, nullify
   use global_parameters, only: OPTION_PATH_LEN
   use parallel_tools
   use sparse_tools

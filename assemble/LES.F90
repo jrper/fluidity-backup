@@ -28,6 +28,7 @@
 
 module les_module
   !!< This module contains several subroutines and functions used to implement LES models
+  use fldebug
   use spud
   use global_parameters, only: FIELD_NAME_LEN, OPTION_PATH_LEN
   use sparse_tools

@@ -8,6 +8,7 @@ module field_derivatives
     !!< (Since the k-th derivative of a scalar field is a rank-k tensor,
     !!< anything with k > 2 rapidly becomes far too big to store in memory.)
 
+    use fldebug
     use vector_tools
     use elements
     use eventcounter

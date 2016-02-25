@@ -27,6 +27,8 @@ module tetrahedron_intersection_module
   type(mesh_type), save :: intersection_mesh
   logical, save :: mesh_allocated = .false.
 
+  private
+
   public :: tet_type, plane_type, intersect_tets, get_planes, finalise_tet_intersector
 
   interface intersect_tets

@@ -29,6 +29,7 @@
 
 module adapt_state_prescribed_module
 
+  use fldebug
   use global_parameters, only : OPTION_PATH_LEN
   use embed_python
   use spud
@@ -36,6 +37,7 @@ module adapt_state_prescribed_module
   use fields
   use state_module
   use field_options
+  use eventcounter, only: EVENT_ADAPTIVITY, EVENT_MESH_MOVEMENT, incrementeventcounter
   use boundary_conditions
   use node_boundary
   use boundary_conditions_from_options

@@ -26,6 +26,7 @@
 !    USA
 #include "fdebug.h"
 module boundary_conditions
+  use fldebug
   use spud
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use futils

@@ -29,7 +29,8 @@
 
 module diagnostic_variables
   !!< A module to calculate and output diagnostics. This replaces the .s file.
- use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN, &
+  use fldebug 
+  use global_parameters, only:FIELD_NAME_LEN,OPTION_PATH_LEN, &
 & PYTHON_FUNC_LEN, int_16, integer_size, real_size
   use quadrature
   use futils

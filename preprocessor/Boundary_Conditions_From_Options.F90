@@ -31,6 +31,7 @@ module boundary_conditions_from_options
   use fldebug
   use global_parameters, only: OPTION_PATH_LEN, PYTHON_FUNC_LEN, pi,&
        current_debug_level, FIELD_NAME_LEN
+  use futils, only: int2str, present_and_true
   use vector_tools
   use quadrature
   use sparse_tools
@@ -2391,7 +2392,7 @@ contains
        if(ele > 0) then
           allocate(ele_local_vertices(ele_vertices(mesh,ele)))
           ! List vertices of element incorporating desired coordinates:
-          ele_local_vertices = element_local_vertices(ele_shape(mesh,ele))
+          ele_local_vertices = local_vertices(ele_shape(mesh,ele))
           ! Find nearest vertex:
           local_vertex = maxloc(local_coord,dim=1)             
           ! List of nodes in element:

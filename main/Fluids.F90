@@ -32,6 +32,8 @@ module fluids_module
   use fldebug
   use auxilaryoptions
   use spud
+  use futils, only: int2str
+  use reference_counting, only: print_references
   use global_parameters, only: current_time, dt, timestep, OPTION_PATH_LEN, &
 simulation_start_time, &
 simulation_start_cpu_time, &
@@ -47,6 +49,7 @@ topology_mesh_name, FIELD_NAME_LEN
   use meshdiagnostics
   use signal_vars
   use fields
+  use state_module
   use vtk_interfaces
   use boundary_conditions
   use halos

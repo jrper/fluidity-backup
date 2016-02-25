@@ -28,6 +28,7 @@
 
 module turbine
 
+  use fldebug
   use spud
   use global_parameters, only: FIELD_NAME_LEN, OPTION_PATH_LEN
   use futils

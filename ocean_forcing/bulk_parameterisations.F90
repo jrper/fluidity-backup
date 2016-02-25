@@ -36,6 +36,7 @@ module bulk_parameterisations
 
     use fldebug
     use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
+    use futils, only: int2str
     use quadrature
     use elements
     use spud

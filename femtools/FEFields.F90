@@ -2,6 +2,7 @@
 module fefields
   !!< Module containing general tools for discretising Finite Element problems.
 
+  use fldebug
   use data_structures
   use element_numbering
   use elements, only: element_type

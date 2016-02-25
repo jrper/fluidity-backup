@@ -29,6 +29,7 @@
 module compressible_projection
   use fldebug
   use spud
+  use futils, only: int2str
   use global_parameters, only: OPTION_PATH_LEN
   use sparse_tools
   use elements

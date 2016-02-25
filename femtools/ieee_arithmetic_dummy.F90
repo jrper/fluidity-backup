@@ -5,7 +5,6 @@ module ieee_arithmetic
   !!< A fake ieee_arithmetic module
   !!< for platforms that don't have it.
 
-  use fldebug
   use iso_c_binding
   implicit none
 

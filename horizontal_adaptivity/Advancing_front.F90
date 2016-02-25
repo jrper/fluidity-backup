@@ -2,6 +2,8 @@
 
 module hadapt_advancing_front
 
+  use fldebug
+  use futils
   use quicksort
   use data_structures
   use spud

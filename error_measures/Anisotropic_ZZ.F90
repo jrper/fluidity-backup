@@ -6,7 +6,8 @@ module anisotropic_zz_module
 ! If you understand the algorithm, the code is trivial,
 ! but not vice versa!
 
-  use spud  
+  use spud
+  use fldebug
   use global_parameters
   use quicksort
   use sparse_tools
@@ -34,6 +35,8 @@ module anisotropic_zz_module
   use form_metric_field
   
   implicit none
+
+  private
 
   public :: compute_anisotropic_zz_metric, compute_g_hat, form_anisotropic_zz_metric, get_jacobian_azz
 

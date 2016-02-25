@@ -26,6 +26,10 @@ module pseudo_supermesh
   use adapt_state_unittest_module, only : adapt_state => adapt_state_unittest
   implicit none
 
+  private
+
+  public :: compute_pseudo_supermesh
+
   contains
 
   subroutine compute_pseudo_supermesh(snapshots, starting_positions, super_positions, no_its, mxnods)

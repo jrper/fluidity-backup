@@ -3,9 +3,13 @@
 module metric_assemble
 
   use spud
+  use fldebug
+  use global_parameters, only: domain_bbox
   use parallel_tools
   use metric_tools
+  use quadrature
   use fields
+  use field_options, only: get_coordinate_field
   use state_module
   use vtk_interfaces
   use merge_tensors
@@ -15,9 +19,11 @@ module metric_assemble
   use form_metric_field
   use edge_length_module
   use aspect_ratios_module
+  use node_boundary, only: initialise_boundcount
+  use initialise_fields_module, only: initialise_field
   use interpolation_metric
   use goals
-  use gradation_metric, only: initialise_gradation_metric, use_gradation_metric
+  use gradation_metric
   use goal_metric
   use bounding_box_metric
   use boundary_metric

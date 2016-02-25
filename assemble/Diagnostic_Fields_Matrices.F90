@@ -30,6 +30,7 @@
 module diagnostic_fields_matrices
   !!< A module to link to diagnostic variable calculations.
 
+  use fldebug
   use global_parameters, only:FIELD_NAME_LEN
   use futils
   use spud

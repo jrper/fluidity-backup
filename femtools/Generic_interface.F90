@@ -48,6 +48,10 @@ module generic_interface
        integer, intent(out) :: stat
      end subroutine set_from_external_function_scalar
   end interface
+
+  private
+
+  public :: set_from_generic_function, set_from_external_function_scalar,&
   
 contains
 

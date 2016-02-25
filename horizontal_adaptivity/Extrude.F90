@@ -5,7 +5,9 @@ module hadapt_extrude
   !!< The layer depths are specified by a sizing function
   !!< which can be arbitrary python.
 
+  use fldebug
   use global_parameters
+  use futils, only: int2str
   use quadrature
   use elements
   use spud

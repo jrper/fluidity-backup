@@ -29,7 +29,9 @@
 
 module sediment_diagnostics 
 
+  use fldebug
   use global_parameters, only:FIELD_NAME_LEN, OPTION_PATH_LEN, dt, timestep
+  use futils, only: int2str
   use vector_tools
   use quadrature
   use elements

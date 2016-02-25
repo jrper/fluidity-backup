@@ -19,6 +19,10 @@ module matrix_norms
     module procedure inf_norm_matrix, inf_norm_field
   end interface
 
+  private
+
+  public :: one_norm, two_norm, inf_norm
+
   contains
 
   function one_norm_matrix(matrix) result(one)

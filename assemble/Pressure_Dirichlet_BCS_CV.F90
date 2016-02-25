@@ -28,6 +28,7 @@
 
 module pressure_dirichlet_bcs_cv
 
+  use fldebug
   use global_parameters, only: OPTION_PATH_LEN
   use quadrature
   use futils

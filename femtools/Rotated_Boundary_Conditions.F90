@@ -43,6 +43,11 @@ use boundary_conditions
 
 implicit none
 
+private
+
+public :: have_rotated_bcs, create_rotation_matrix, rotate_momentum_equation,&
+     rotate_ct_m, rotate_velocity, rotate_velocity_back
+
 contains
   
   function have_rotated_bcs(u)

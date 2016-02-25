@@ -29,7 +29,9 @@
 module fields_base
   !!< This module contains abstracted field types which carry shape and
   !!< connectivity with them.
+  use fldebug
   use global_parameters, only: FIELD_NAME_LEN, current_debug_level, current_time
+  use futils, only: free_unit, int2str
   use reference_counting
   use element_numbering
   use vector_tools, only: solve, invert, norm2, cross_product

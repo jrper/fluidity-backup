@@ -1,6 +1,7 @@
 #include "fdebug.h"
 
 module interpolation_module
+  use fldebug
   use futils
   use superconvergence
   use sparse_tools

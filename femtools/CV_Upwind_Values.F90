@@ -31,6 +31,7 @@ module cv_upwind_values
   use vector_tools, only: norm2, cross_product, scalar_triple_product
   use global_parameters, only: OPTION_PATH_LEN, FIELD_NAME_LEN
   use quadrature
+  use element_numbering, only: FAMILY_SIMPLEX, FAMILY_CUBE
   use elements
   use spud
   use sparse_tools

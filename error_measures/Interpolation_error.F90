@@ -8,6 +8,11 @@ module interpolation_error
   use vtk_interfaces, only: vtk_write_fields
   implicit none
 
+  private
+
+  public :: compute_interpolation_error_l2, compute_interpolation_error_inf,&
+       compute_interpolation_error_h1
+
   contains
 
   function compute_interpolation_error_l2(solution, field, positions) result(l2)

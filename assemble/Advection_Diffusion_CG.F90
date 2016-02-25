@@ -31,6 +31,7 @@ module advection_diffusion_cg
   
   use fldebug
   use global_parameters, only : FIELD_NAME_LEN, OPTION_PATH_LEN, COLOURING_CG1
+  use futils, only: int2str
   use quadrature
   use elements
   use spud

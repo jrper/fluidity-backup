@@ -30,6 +30,7 @@
 module diagnostic_fields
   !!< A module to calculate diagnostic fields.
 
+  use fldebug
   use global_parameters, only:FIELD_NAME_LEN, current_time, OPTION_PATH_LEN
   use futils
   use spud

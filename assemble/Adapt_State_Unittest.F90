@@ -28,8 +28,10 @@
 #include "fdebug.h" 
 
 module adapt_state_unittest_module
-  
+
+  use fldebug
   use global_parameters, only: FIELD_NAME_LEN
+  use futils, only: present_and_true
   use eventcounter
   use parallel_tools
   use fields

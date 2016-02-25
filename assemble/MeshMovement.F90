@@ -4,6 +4,7 @@ module meshmovement
 
   use global_parameters
   use fldebug
+  use vector_tools, only: solve, mat_diag_mat, eigendecomposition_symmetric
   use element_numbering
   use elements
   use shape_functions

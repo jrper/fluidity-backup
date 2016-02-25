@@ -17,6 +17,10 @@ module lagrangian_remap
 
   implicit none
 
+  private
+
+  public :: lagrangian_advection
+
 contains
 
   subroutine lagrangian_advection(old_position, velocity, dt, &

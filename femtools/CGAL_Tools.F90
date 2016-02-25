@@ -12,6 +12,8 @@ module cgal_tools
     end subroutine convex_hull_area_3d
   end interface
 
+  private
+
   public :: convex_hull_area
 
   contains
