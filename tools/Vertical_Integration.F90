@@ -7,6 +7,7 @@ subroutine vertical_integration(target_basename_, target_basename_len, &
 
   use fetools, only: shape_shape, shape_rhs
   use transform_elements
+  use elements
   use fields
   use fldebug
   use global_parameters, only : current_debug_level, OPTION_PATH_LEN
