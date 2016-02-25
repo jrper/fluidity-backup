@@ -34,6 +34,7 @@ subroutine project_vtu(input_filename_, input_filename_len, donor_basename_, don
   use elements
   use fields
   use fldebug
+  use reference_counting, only: print_references
   use global_parameters, only : current_debug_level
   use intersection_finder_module
   use linked_lists

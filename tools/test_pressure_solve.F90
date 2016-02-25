@@ -4,7 +4,9 @@
 #include "fdebug.h"
   
   subroutine test_pressure_solve
-
+    
+    use futils, only: free_unit
+    use quadrature
     use unittest_tools
     use solvers
     use fields

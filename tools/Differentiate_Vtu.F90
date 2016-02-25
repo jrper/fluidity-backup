@@ -37,6 +37,7 @@ subroutine differentiate_vtu(input_filename_, input_filename_len, output_filenam
   use fields
   use state_module
 !
+  use reference_counting, only: print_references
   use vector_tools, only: solve
   use fetools, only: shape_shape, shape_vector_rhs
   use transform_elements, only: transform_to_physical
