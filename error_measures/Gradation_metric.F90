@@ -45,7 +45,8 @@ module gradation_metric
   private
 
   public :: initialise_gradation_metric, form_gradation_metric, use_gradation_metric,&
-       construct_edge_list, tag_edges, wrap_pop
+       construct_edge_list, tag_edges, wrap_pop, match_up_ellipsoids, match_up_vectors,&
+       rotate_vec, warp_directions
 
   contains
 

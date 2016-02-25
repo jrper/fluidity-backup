@@ -30,6 +30,7 @@
 subroutine test_make_mesh_1d
 
   use futils
+  use element_numbering, only: FAMILY_SIMPLEX
   use elements
   use fields
   use fldebug

@@ -168,7 +168,8 @@ private
 
 public :: find_element_numbering, local_coords, local_vertices, vertex_num,&
      boundary_numbering, edge_num, face_num, boundary_local_num, operator(==),&
-     ele_numbering_type, boundary_num_length, ele_local_num, tr, te
+     ele_numbering_type, boundary_num_length, ele_local_num, face_local_num,&
+     edge_local_num, tr, te
 
 contains
 

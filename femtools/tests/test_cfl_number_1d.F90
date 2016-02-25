@@ -30,6 +30,7 @@
 subroutine test_cfl_number_1d
 
   use diagnostic_fields
+  use quadrature
   use elements
   use fields
   use fldebug

@@ -32,14 +32,14 @@ module goal_metric
   !! How much error should we tolerate in the goal?
   !! If goal_rel_tolerance /= 0.0, then use that as a relative
   !! tolerance, otherwise use goal_tolerance.
-  real :: goal_tolerance
-  real :: goal_rel_tolerance = 0.0
-  character(len=OPTION_PATH_LEN) :: goal_name
+  real, public :: goal_tolerance
+  real, public :: goal_rel_tolerance = 0.0
+  character(len=OPTION_PATH_LEN), public :: goal_name
 
   !! What state variables does the goal depend on?
   !! The gradient of the goal with respect to
   !! each dependency must be available from goal_grad.
-  character(len=FIELD_NAME_LEN), dimension(:), pointer :: goal_deps => null()
+  character(len=FIELD_NAME_LEN), dimension(:), pointer, public :: goal_deps => null()
 
   interface form_goal_metric
     module procedure form_goal_metric_generic, form_goal_metric_specific

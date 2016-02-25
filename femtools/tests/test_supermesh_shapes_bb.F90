@@ -29,6 +29,7 @@
 
 subroutine test_supermesh_shapes_bb
 
+  use quadrature
   use elements
   use fetools
   use fields

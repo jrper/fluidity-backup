@@ -5,6 +5,8 @@ subroutine test_unify_meshes
 
   use unittest_tools
   use mesh_files
+  use quadrature
+  use elements
   use fields
   use linked_lists
   use intersection_finder_module

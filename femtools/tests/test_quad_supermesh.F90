@@ -5,6 +5,7 @@ subroutine test_quad_supermesh
 
   use unittest_tools
   use mesh_files
+  use quadrature
   use fields
   use linked_lists
   use intersection_finder_module
