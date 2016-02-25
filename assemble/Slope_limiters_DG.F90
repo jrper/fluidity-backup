@@ -34,7 +34,7 @@ use vector_tools, only: solve
 use elements
 use eventcounter
 use transform_elements
-use sparse_tools, only: csr_matrix
+use sparse_tools
 use fields
 use field_options, only: find_linear_parent_mesh
 use state_module

@@ -33,6 +33,7 @@ module adapt_state_unittest_module
   use global_parameters, only: FIELD_NAME_LEN
   use futils, only: present_and_true
   use eventcounter
+  use elements
   use parallel_tools
   use fields
   use state_module

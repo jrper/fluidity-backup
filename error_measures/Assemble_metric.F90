@@ -7,7 +7,9 @@ module metric_assemble
   use global_parameters, only: domain_bbox
   use parallel_tools
   use metric_tools
+  use sparse_tools
   use quadrature
+  use elements
   use fields
   use field_options, only: get_coordinate_field
   use state_module
