@@ -4,6 +4,7 @@ subroutine test_generate_layered_mesh_2d
   use hadapt_metric_based_extrude
   use hadapt_combine_meshes
   use quadrature
+  use elements
   use fields
   use spud
   use unittest_tools
