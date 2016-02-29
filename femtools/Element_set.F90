@@ -10,7 +10,8 @@ module element_set
      end subroutine ele_get_ele
 
      subroutine ele_fetch_list(arr)
-        integer, dimension(:), intent(out) :: arr
+       use iso_c_binding 
+        integer(c_int), dimension(*), intent(out) :: arr
       end subroutine ele_fetch_list
 
       subroutine ele_get_size(size)

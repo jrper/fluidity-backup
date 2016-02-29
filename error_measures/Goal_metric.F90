@@ -18,7 +18,7 @@ module goal_metric
   use state_module, only: state_type, extract_scalar_field, extract_vector_field, insert
   use merge_tensors, only: merge_tensor_fields
   use vtk_interfaces, only: vtk_write_fields
-  use field_derivatives, only: compute_hessian, patch_type, get_patch_node
+  use field_derivatives, only: compute_hessian
   use form_metric_field, only: form_metric
   use goals
   use gradation_metric, only: form_gradation_metric
