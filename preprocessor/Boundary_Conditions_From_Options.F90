@@ -43,6 +43,7 @@ module boundary_conditions_from_options
   use transform_elements
   use halos_numbering
   use fields
+  use embed_python, only: real_from_python
   use sparse_tools_petsc
   use state_module
   use field_options
@@ -53,16 +54,17 @@ module boundary_conditions_from_options
   use initialise_fields_module
   use tidal_module
   use samplenetcdf
-  use synthetic_bc
-  use pickers_inquire
-  use bulk_parameterisations
+  use synthetic_bc, only : add_sem_bc, initialise_sem_memory, synthetic_eddy_method
+  use pickers_inquire, only: picker_inquire
+  use bulk_parameterisations, only: get_forcing_surface_element_list
   use k_epsilon, only: keps_bcs
   use sediment, only: set_sediment_reentrainment
 
   implicit none
 
   private
-  public populate_boundary_conditions, set_boundary_conditions_values, &
+
+  public :: populate_boundary_conditions, set_boundary_conditions_values, &
        apply_dirichlet_conditions_inverse_mass, impose_reference_pressure_node, &
        find_reference_node_from_coordinates, impose_reference_velocity_node
   public :: populate_scalar_boundary_conditions, &
@@ -72,6 +74,32 @@ module boundary_conditions_from_options
      module procedure apply_dirichlet_conditions_inverse_mass_vector, &
                       apply_dirichlet_conditions_inverse_mass_vector_lumped
   end interface apply_dirichlet_conditions_inverse_mass
+
+  interface
+!! Explicit interface for get_era40_fluxes function as defined in
+!!    ocean_forcing/forcingERA40.cpp
+     subroutine get_era40_fluxes( time, X, Y, Z, temp,&
+          Vx, Vy, Vz, sal,F_as, Q_as, Tau_u, Tau_v, Q_s, &
+          NNodes, on_sphere, bulk_formula)
+
+       real :: time
+       real, dimension(:) :: X, Y, Z, temp, Vx, Vy, Vz, sal, F_as,&
+            Q_as, Tau_u, Tau_v, Q_s
+       integer :: NNodes, bulk_formula
+       logical*1 :: on_sphere
+
+     end subroutine get_era40_fluxes
+  end interface
+
+  interface
+!! Explicit interface for projections_spherical_cartesion function as defined in
+!!    femtools/projections.cpp
+     subroutine projections_spherical_cartesian(n, x, y, z)
+       integer :: n
+       real, dimension(:) :: x,y,z
+     end subroutine projections_spherical_cartesian
+
+  end interface
 
 contains
 
@@ -1547,7 +1575,7 @@ contains
         transformation(1) = lat_long(2) ! Longtitude
         transformation(2) = lat_long(1) ! latitude
         transformation(3) = 0.0
-        call projections_spherical_cartesian(1, transformation(1), transformation(2), transformation(3))
+        call projections_spherical_cartesian(1, transformation(1:1), transformation(2:2), transformation(3:3))
     else
         transformation = 0.0
     end if

@@ -27,6 +27,17 @@ module meshmovement
 
   implicit none
   integer,save :: MeshCount=0
+
+  interface
+
+     subroutine set_debug_level(level)
+       implicit none
+       integer, intent(in) :: level
+     end subroutine set_debug_level
+
+     subroutine reset_debug_level
+     end subroutine reset_debug_level
+  end interface
   
   private
   

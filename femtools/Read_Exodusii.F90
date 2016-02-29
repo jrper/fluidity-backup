@@ -96,7 +96,7 @@ contains
 
     field=read_exodusii_file(filename, shape)
 
-    call deallocate_element(shape)
+    call deallocate(shape)
     call deallocate(quad)
 
     ewrite(2,*) "Out of read_exodusii_simple"

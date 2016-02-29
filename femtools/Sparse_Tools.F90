@@ -45,6 +45,13 @@ module sparse_tools
   
 #include "petsc_legacy.h"
 
+  interface
+     subroutine KSPDestroy(M,ierr)
+       Mat :: M
+       integer :: ierr
+     end subroutine KSPDestroy
+  end interface
+
   private
   
   type csr_sparsity

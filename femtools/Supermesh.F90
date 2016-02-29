@@ -1,6 +1,7 @@
 #include "fdebug.h"
 
 module supermesh_construction
+  use fldebug
   use global_parameters, only : real_4, real_8
   use futils
   use sparse_tools

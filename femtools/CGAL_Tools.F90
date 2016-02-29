@@ -1,6 +1,7 @@
 #include "fdebug.h"
 module cgal_tools
 
+  use fldebug
   use fields
   implicit none
 

@@ -36,6 +36,7 @@ module adapt_state_module
   use reference_counting, only: tag_references, print_tagged_references
   use elements
   use mpi_interfaces
+  use metric_tools
   use parallel_tools
   use data_structures
   use sparse_tools

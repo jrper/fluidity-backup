@@ -2,6 +2,7 @@
 
 module matrix_norms
 
+  use fldebug
   use vector_tools
   use fields
   use node_boundary

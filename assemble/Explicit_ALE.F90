@@ -18,6 +18,7 @@ module ale_module
   use edge_length_module
   use metric_assemble
   use solidconfiguration
+  use adapt_integration, only: mtetin
 
   private
   real,              save :: toler_coarse,toler_fine,w1,w2,w3,w4,w5,fmin,minfchg,dx,dy,dz

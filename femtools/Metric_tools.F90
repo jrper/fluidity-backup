@@ -6,6 +6,7 @@ module metric_tools
   use vector_tools
   use spud
   use unittest_tools
+  use element_numbering, only: FAMILY_SIMPLEX
   use fields_data_types
   use fields_base
   use fields_allocates
@@ -50,7 +51,7 @@ module metric_tools
 	    get_rotation_matrix, get_rotation_matrix_cross,&
 	    get_rotation_matrix_2d, get_rotation_matrix_3d,&
 	    get_matrix_identity, have_adapt_opt, simplex_tensor,&
-	    metric_from_edge_lengths, edge_lengths_From_metric,&
+	    metric_from_edge_lengths, edge_lengths_from_metric,&
 	    apply_transform, absolutify_tensor, domain_length_scale,&
 	    get_angle, error_bound_name, project_to_subspace,&
 	    element_quality_p0, check_perm,&

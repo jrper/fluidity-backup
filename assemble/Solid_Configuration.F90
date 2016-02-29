@@ -11,6 +11,8 @@ module solidconfiguration
   use transform_elements
   use fetools, only: X_, Y_, Z_
   use fields
+  use embed_python, only: set_particle_sfield_from_python,&
+       set_particle_vfield_from_python
   use parallel_fields
   use state_module
   use vtk_interfaces, only: vtk_write_fields

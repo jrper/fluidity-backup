@@ -1,6 +1,7 @@
 #include "fdebug.h"
 
 module mba_adapt_module
+  use fldebug
   use eventcounter
   use metric_tools
   use fields

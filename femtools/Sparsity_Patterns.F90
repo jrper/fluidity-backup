@@ -28,6 +28,7 @@
 
 module sparsity_patterns
   ! This module produces sparsity patterns for matrices.
+  use fldebug
   use linked_lists
   use elements
   use sparse_tools

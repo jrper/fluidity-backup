@@ -82,6 +82,11 @@ module diagnostic_variables
   
   implicit none
 
+  interface
+     subroutine register_diagnostics()
+     end subroutine register_diagnostics
+  end interface
+
   private
 
   public :: initialise_diagnostics, initialise_convergence, &

@@ -3,6 +3,7 @@
 module fetools
   !!< Module containing general tools for discretising Finite Element problems.
 
+  use fldebug
   use elements
   use fields_data_types
   use fields_base
