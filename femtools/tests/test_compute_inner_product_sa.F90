@@ -1,6 +1,7 @@
 subroutine test_compute_inner_product_sa
 
   use conservative_interpolation_module
+  use vector_tools, only: solve
   use elements
   use transform_elements
   use fetools

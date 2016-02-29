@@ -3,6 +3,7 @@
 
 subroutine test_unify_meshes
 
+  use fldebug
   use unittest_tools
   use mesh_files
   use quadrature

@@ -27,6 +27,7 @@
 #include "fdebug.h"
   
   subroutine test_colouring
+  use fldebug
   use sparse_tools
   use fields_data_types
   use fields_manipulation

@@ -3,6 +3,7 @@
 
 subroutine test_quad_supermesh
 
+  use fldebug
   use unittest_tools
   use mesh_files
   use quadrature
